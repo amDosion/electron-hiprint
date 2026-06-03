@@ -73,7 +73,18 @@ jobs:
         with:
           node-version: "18"
 
+      - name: 设置 macOS node-gyp Python
+        if: runner.os == 'macOS'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖 (macOS)
+        if: runner.os == 'macOS'
+        run: npm_config_python="$(python3 -c 'import sys; print(sys.executable)')" npm install
+
       - name: 安装依赖
+        if: runner.os != 'macOS'
         run: npm install
 
       - name: 打包 ${{ matrix.name-suffix }}
