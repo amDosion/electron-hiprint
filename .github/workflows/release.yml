@@ -1,5 +1,8 @@
 name: Release Build
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     # 仅匹配 1.2.3 或 1.2.3-beta1 这样的 tag，例如 1.0.0、2.3.4-beta2
@@ -19,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: 拉取代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 校验 package.json version 与 tag 一致
         run: |
@@ -63,10 +66,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: 拉取代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 设置 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "18"
 
@@ -79,7 +82,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
 
       - name: 上传构建产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.name-suffix }}
           path: |
@@ -98,43 +101,43 @@ jobs:
         run: echo "RELEASE_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
 
       - name: 下载 win64 产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: win_x64
           path: artifacts/win
 
       - name: 下载 win32 产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: win_ia32
           path: artifacts/win
 
       - name: 下载 mac ARM64 产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: mac_arm64
           path: artifacts/mac
 
       - name: 下载 mac x64 产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: mac_x64
           path: artifacts/mac
 
       - name: 下载 mac Universal 产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: mac_universal
           path: artifacts/mac
 
       - name: 下载 linux x64 产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: linux_x64
           path: artifacts/linux
 
       - name: 下载 linux ARM64 产物
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: linux_arm64
           path: artifacts/linux
@@ -144,7 +147,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }} (${{ env.RELEASE_DATE }})
-          draft: true
+          draft: false
           generate_release_notes: true
           body: |
             Github Actions 自动发布的 Release
