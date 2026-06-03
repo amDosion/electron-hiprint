@@ -184,6 +184,12 @@
               logPath: "",
               pdfPath: "",
               defaultPrinter: "",
+              exportDirectoryEnabled: false,
+              exportDirectoryPath: "",
+              exportDirectoryDisplayName: "",
+              exportDirectoryMaxMb: 50,
+              exportDirectoryAllowedExtensions: ".pdf,.json,.csv,.txt",
+              exportDirectoryConflictPolicy: "rename",
             },
             // 预制的版本，解决部分内网无法获取新版本的问题
             versions: [
@@ -266,11 +272,11 @@
                   display: this.setTab === "basicSet",
                 },
                 {
-                  label: "插件版本设置",
+                  label: "内置渲染插件版本",
                   prop: "pluginVersion",
                   is: "el-select",
                   optionIs: "el-option",
-                  tips: "Render api 使用的渲染版本",
+                  tips: "仅用于客户端内部 render api 的兼容渲染包，不是 vue-admin 使用的 V3 插件包版本",
                   attrs: {
                     filterable: true,
                     defaultFirstOption: true,
@@ -484,6 +490,107 @@
                   display: this.setTab === "advancedSet",
                 },
                 {
+                  label: "启用共享导出目录",
+                  prop: "exportDirectoryEnabled",
+                  is: "el-switch",
+                  tips: "允许 Web 端通过中转把文件导出到本机授权目录",
+                  span: 12,
+                  display: this.setTab === "advancedSet",
+                },
+                {
+                  label: "导出目录名称",
+                  prop: "exportDirectoryDisplayName",
+                  is: "el-input",
+                  tips: "仅向 Web 端显示这个名称，不暴露真实路径",
+                  attrs: {
+                    placeholder: "例如：仓库导出目录",
+                  },
+                  span: 12,
+                  display:
+                    this.setTab === "advancedSet" &&
+                    this.formData.exportDirectoryEnabled,
+                },
+                {
+                  label: "共享导出目录",
+                  prop: "exportDirectoryPath",
+                  is: "el-input",
+                  tips: "文件只允许写入这个目录下，不能由 Web 端指定其他路径",
+                  attrs: {
+                    readonly: true,
+                  },
+                  event: {
+                    click: () => {
+                      this.openDirectory("exportDirectoryPath");
+                    },
+                  },
+                  span: 18,
+                  display:
+                    this.setTab === "advancedSet" &&
+                    this.formData.exportDirectoryEnabled,
+                  rules: [
+                    {
+                      required: true,
+                      message: "共享导出目录不能为空",
+                      trigger: "blur",
+                    },
+                  ],
+                },
+                {
+                  label: "　",
+                  is: "el-button",
+                  event: {
+                    click: () => {
+                      this.chooseDirectory("exportDirectoryPath");
+                    },
+                  },
+                  content: "选择",
+                  span: 6,
+                  display:
+                    this.setTab === "advancedSet" &&
+                    this.formData.exportDirectoryEnabled,
+                },
+                {
+                  label: "单文件上限(MB)",
+                  prop: "exportDirectoryMaxMb",
+                  is: "el-input-number",
+                  attrs: {
+                    min: 1,
+                    max: 200,
+                    controls: false,
+                  },
+                  span: 12,
+                  display:
+                    this.setTab === "advancedSet" &&
+                    this.formData.exportDirectoryEnabled,
+                },
+                {
+                  label: "允许扩展名",
+                  prop: "exportDirectoryAllowedExtensions",
+                  is: "el-input",
+                  tips: "逗号分隔，例如 .pdf,.json,.csv,.txt",
+                  attrs: {
+                    placeholder: ".pdf,.json,.csv,.txt",
+                  },
+                  span: 12,
+                  display:
+                    this.setTab === "advancedSet" &&
+                    this.formData.exportDirectoryEnabled,
+                },
+                {
+                  label: "重名处理",
+                  prop: "exportDirectoryConflictPolicy",
+                  is: "el-select",
+                  optionIs: "el-option",
+                  options: [
+                    { label: "自动重命名", value: "rename" },
+                    { label: "直接失败", value: "fail" },
+                    { label: "覆盖原文件", value: "overwrite" },
+                  ],
+                  display:
+                    this.setTab === "advancedSet" &&
+                    this.formData.exportDirectoryEnabled,
+                },
+                {
                   label: "禁用GPU",
                   prop: "disabledGpu",
                   is: "el-switch",
@@ -539,7 +646,7 @@
         created() {
           this.onEvents();
           // 获取配置
-          this.formData = store.store;
+          this.formData = this.inflateFormData(store.store);
           this.getVersions();
           this.getPrintersList();
         },
@@ -553,6 +660,7 @@
           onEvents() {
             ipcRenderer.on("downloadedVersions", (event, versions) => {
               this.downloadedVersions = versions;
+              this.mergeDownloadedVersions();
             });
             ipcRenderer.on("getPrintersList", (event, printers) => {
               this.printerList = printers;
@@ -596,6 +704,7 @@
             const title = {
               logPath: "选择日志存储路径",
               pdfPath: "选择 PDF 缓存路径",
+              exportDirectoryPath: "选择共享导出目录",
             }[type];
             ipc.send("showOpenDialog", {
               title,
@@ -625,11 +734,63 @@
           submit() {
             this.$refs.formRef.validate((valid) => {
               if (valid) {
-                ipc.send("setConfig", this.formData);
+                ipc.send("setConfig", this.serializeFormData(this.formData));
               } else {
                 return false;
               }
             });
+          },
+          inflateFormData(data) {
+            const exportDirectory = data.exportDirectory || {};
+            return {
+              ...data,
+              exportDirectoryEnabled: exportDirectory.enabled === true,
+              exportDirectoryPath: exportDirectory.path || "",
+              exportDirectoryDisplayName: exportDirectory.displayName || "",
+              exportDirectoryMaxMb: Math.max(
+                1,
+                Math.round((Number(exportDirectory.maxBytes) || 52428800) / 1048576),
+              ),
+              exportDirectoryAllowedExtensions: Array.isArray(
+                exportDirectory.allowedExtensions,
+              )
+                ? exportDirectory.allowedExtensions.join(",")
+                : ".pdf,.json,.csv,.txt",
+              exportDirectoryConflictPolicy:
+                exportDirectory.conflictPolicy || "rename",
+            };
+          },
+          serializeFormData(data) {
+            const allowedExtensions = String(
+              data.exportDirectoryAllowedExtensions || "",
+            )
+              .split(",")
+              .map((item) => item.trim().toLowerCase())
+              .filter(Boolean)
+              .map((item) => (item.startsWith(".") ? item : `.${item}`));
+            const output = {
+              ...data,
+              exportDirectory: {
+                enabled: data.exportDirectoryEnabled === true,
+                path: data.exportDirectoryPath || "",
+                displayName: data.exportDirectoryDisplayName || "",
+                maxBytes:
+                  Math.max(1, Number(data.exportDirectoryMaxMb) || 50) *
+                  1048576,
+                allowedExtensions: allowedExtensions.length
+                  ? Array.from(new Set(allowedExtensions))
+                  : [".pdf", ".json", ".csv", ".txt"],
+                conflictPolicy:
+                  data.exportDirectoryConflictPolicy || "rename",
+              },
+            };
+            delete output.exportDirectoryEnabled;
+            delete output.exportDirectoryPath;
+            delete output.exportDirectoryDisplayName;
+            delete output.exportDirectoryMaxMb;
+            delete output.exportDirectoryAllowedExtensions;
+            delete output.exportDirectoryConflictPolicy;
+            return output;
           },
           /**
            * @description: 关闭窗口
@@ -663,12 +824,32 @@
                   "time",
                   "desc",
                 );
+                this.mergeDownloadedVersions();
               }
             };
             xhr.onerror = () => {
-              console.log("获取版本信息失败");
+              this.mergeDownloadedVersions();
             };
             xhr.send();
+          },
+          mergeDownloadedVersions() {
+            const versionMap = new Map(
+              this.versions.map((item) => [item.value, item]),
+            );
+            this.downloadedVersions.forEach((version) => {
+              if (!versionMap.has(version)) {
+                versionMap.set(version, {
+                  value: version,
+                  time: Number.MAX_SAFE_INTEGER,
+                  info: "内置",
+                });
+              }
+            });
+            this.versions = _.orderBy(
+              Array.from(versionMap.values()),
+              ["time", "value"],
+              ["desc", "desc"],
+            );
           },
           /**
            * @description: 获取打印机列表

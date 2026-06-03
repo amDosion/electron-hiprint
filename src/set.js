@@ -144,6 +144,20 @@ function setConfig(event, data) {
           });
           return;
         }
+        if (data.exportDirectory && data.exportDirectory.enabled) {
+          try {
+            fs.accessSync(data.exportDirectory.path, fs.constants.W_OK);
+          } catch (err) {
+            dialog.showMessageBox(SET_WINDOW, {
+              type: "error",
+              title: "提示",
+              message: "共享导出目录无法写入数据，请重新设置！",
+              buttons: ["确定"],
+              noLink: true,
+            });
+            return;
+          }
+        }
         store.set(data);
         setTimeout(() => {
           app.relaunch();
@@ -156,7 +170,7 @@ function setConfig(event, data) {
 /**
  * @description: 渲染进程触发下载插件
  * @param {IpcMainEvent} event
- * @param {Object} data 插件版本号
+ * @param {Object} data 客户端内部渲染插件版本号
  * @return {void}
  */
 function downloadPlugin(event, data) {

@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main, "codex/**"]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    name: Syntax checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check main.js
+          node --check start.js
+          node --check src/set.js
+          node --check tools/utils.js
+          node --check build/write-build-info.js

@@ -22,6 +22,8 @@
     <script>
       const { ipcRenderer } = require("electron");
       const Store = require("electron-store");
+      const path = require("path");
+      const fs = require("fs");
 
       const store = new Store();
 
@@ -42,6 +44,12 @@
       const isPackaged = location.href.includes("app.asar");
       // 用于判断当前系统
       const platform = process.platform;
+      const pluginVersion = store.get("pluginVersion");
+      const pluginBaseUrl = isPackaged ? "../../plugin" : "../plugin";
+      const pluginDir = path.resolve(
+        __dirname,
+        isPackaged ? "../../plugin" : "../plugin",
+      );
 
       // 获取模板json. string或者json 统一处理
       const getTemplateJson = (val) => {
@@ -72,20 +80,22 @@
         script.setAttribute("type", "text/javascript");
 
         // 加载插件
-        let scriptSrc = `../plugin/${store.get(
-          "pluginVersion",
-        )}_vue-plugin-hiprint.js`;
-
-        // 打包版本路径特殊处理
-        if (isPackaged) {
-          scriptSrc = `../../plugin/${store.get(
-            "pluginVersion",
-          )}_vue-plugin-hiprint.js`;
-        }
+        const scriptSrc = `${pluginBaseUrl}/${pluginVersion}_vue-plugin-hiprint.js`;
 
         script.setAttribute("src", scriptSrc);
         script.onload = () => {
-          hiprint = window["vue-plugin-hiprint"].hiprint;
+          const pluginGlobal =
+            window["vue-plugin-hiprint"] || window.VuePluginHiprint;
+          if (!pluginGlobal || !pluginGlobal.hiprint) {
+            ipcRenderer.send("showMessageBox", {
+              title: "插件加载错误",
+              message: `【${pluginVersion}】版本未暴露 hiprint，请重新在设置中指定版本！`,
+              type: "error",
+              buttons: ["我知道了"],
+            });
+            return;
+          }
+          hiprint = pluginGlobal.hiprint;
 
           ipcRenderer.on("png", (event, data) => {
             // 滚动窗口滚动条到左上角
@@ -156,9 +166,7 @@
         script.onerror = () => {
           ipcRenderer.send("showMessageBox", {
             title: "插件加载错误",
-            message: `无法从插件缓存中加载【${store.get(
-              "pluginVersion",
-            )}】版本，请重新在设置中指定版本！`,
+            message: `无法从插件缓存中加载【${pluginVersion}】版本，请重新在设置中指定版本！`,
             type: "error",
             buttons: ["我知道了"],
           });
@@ -166,12 +174,16 @@
 
         const head = document.querySelector("head");
 
-        let cssSrc = `../plugin/${store.get("pluginVersion")}_print-lock.css`;
-
-        // mac 打包版本路径特殊处理
-        if (isPackaged) {
-          cssSrc = `../../plugin/${store.get("pluginVersion")}_print-lock.css`;
+        const styleFile = `${pluginVersion}_style.css`;
+        if (fs.existsSync(path.join(pluginDir, styleFile))) {
+          head.append(
+            $(
+              `<link rel="stylesheet" type="text/css" href="${pluginBaseUrl}/${styleFile}">`,
+            )[0],
+          );
         }
+
+        const cssSrc = `${pluginBaseUrl}/${pluginVersion}_print-lock.css`;
 
         head.append(
           $(

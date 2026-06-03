@@ -1,11 +1,18 @@
 {
   "name": "electron-hiprint",
-  "version": "1.0.15-beta4",
+  "version": "1.0.18",
   "description": "vue-plugin-hiprint client",
   "main": "main.js",
   "author": "CcSimple<840054486@qq.com>",
   "license": "MIT",
-  "homepage": "https://gitee.com/CcSimple",
+  "homepage": "https://github.com/amDosion/electron-hiprint#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amDosion/electron-hiprint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/amDosion/electron-hiprint/issues"
+  },
   "scripts": {
     "start": "node ./build/write-build-info.js && node start.js",
     "postinstall": "npm run fix-sqlite3 && node ./build/write-build-info.js",

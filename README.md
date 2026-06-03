@@ -1,6 +1,6 @@
 # electron-hiprint
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/CcSimple/electron-hiprint)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/amDosion/electron-hiprint)
 
 <div align="center">
 
@@ -8,7 +8,7 @@
 
 </div>
 
-该项目是为 [vue-plugin-hiprint](https://github.com/CcSimple/vue-plugin-hiprint) 配套开发的静默打印解决方案。我们发现部分使用此项目的开发者拥有自定义的设计器或渲染方案，或者仅需要静默打印一段 HTML、PDF。如果您也有类似需求，electron-hiprint 将是您的理想选择。
+该项目是为 [vue3-print / vue-plugin-hiprint](https://github.com/amDosion/vue3-print) 配套开发的静默打印解决方案。我们发现部分使用此项目的开发者拥有自定义的设计器或渲染方案，或者仅需要静默打印一段 HTML、PDF。如果您也有类似需求，electron-hiprint 将是您的理想选择。
 
 <div align="center">
 
@@ -20,15 +20,12 @@
 
 #### 下载发行版
 
-1. [github releases](https://github.com/CcSimple/electron-hiprint/releases)
-2. [gitee releases](https://gitee.com/CcSimple/electron-hiprint/releases)
+1. [GitHub releases](https://github.com/amDosion/electron-hiprint/releases)
 
 #### 本地调试与打包
 
 ```shell
-git clone https://github.com/CcSimple/electron-hiprint.git
-# or
-git clone https://gitee.com/CcSimple/electron-hiprint.git
+git clone https://github.com/amDosion/electron-hiprint.git
 
 # init
 cd electron-hiprint
@@ -43,7 +40,7 @@ npm run build-w-64
 
 ## 推荐的 Web 打印设计渲染插件
 
-[vue-plugin-hiprint](https://github.com/CcSimple/vue-plugin-hiprint.git)
+[vue3-print / vue-plugin-hiprint](https://github.com/amDosion/vue3-print)
 
 ## 打印原理
 
@@ -142,7 +139,7 @@ npm run build-w-64
 
 ## 中转服务
 
-项目支持 `node-hiprint-transit`，可解决跨域问题并实现云打印功能，详见 [node-hiprint-transit](https://github.com/Xavier9896/node-hiprint-transit)
+项目支持 `node-hiprint-transit`，可解决跨域问题并实现云打印功能，详见 [node-hiprint-transit](https://github.com/amDosion/node-hiprint-transit)
 
 <div align="center">
 
@@ -317,7 +314,7 @@ npm run build-w-64
    socket.emit("refreshPrinterList");
    // node-hiprint-transit 会将这个请求再转发给所有连接的 electron-hiprint ，以获取最新的打印机列表，但是并没有等待所有 electron-hiprint 响应结束，而是在延迟 2s 后直接返回了缓存及新获取到的打印机列表。并且 node-hiprint-transit 每 10min 都会主动向 electron-hiprint 请求一次 printerList，所以这应该并无大碍。或者你也可以优化这一个功能。
 
-   // https://github.com/Xavier9896/node-hiprint-transit/blob/main/index.js#L139
+   // https://github.com/amDosion/node-hiprint-transit/blob/main/index.js
    ```
 
    </details>
@@ -772,7 +769,7 @@ window.open("hiprint://");
 
 // element-ui
 this.$alert(
-  `连接【${hiwebSocket.host}】失败！<br>请确保目标服务器已<a href="https://gitee.com/CcSimple/electron-hiprint/releases" target="_blank"> 下载 </a> 并 <a href="hiprint://" target="_blank"> 运行 </a> 打印服务！`,
+  `连接【${hiwebSocket.host}】失败！<br>请确保目标服务器已<a href="https://github.com/amDosion/electron-hiprint/releases" target="_blank"> 下载 </a> 并 <a href="hiprint://" target="_blank"> 运行 </a> 打印服务！`,
   "客户端未连接",
   { dangerouslyUseHtmlString: true },
 );
@@ -786,7 +783,7 @@ this.$error({
       <br />
       请确保目标服务器已
       <a
-        href="https://gitee.com/CcSimple/electron-hiprint/releases"
+        href="https://github.com/amDosion/electron-hiprint/releases"
         target="_blank"
       >
         下载
@@ -803,9 +800,9 @@ this.$error({
 
 | 项目名称                 | 项目地址                                                                                                                 | 下载地址                                                                | 描述                                                               |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| vue-plugin-hiprint       | [github](https://github.com/CcSimple/vue-plugin-hiprint)、[gitee](https://gitee.com/CcSimple/vue-plugin-hiprint)         | [npm](https://www.npmjs.com/package/vue-plugin-hiprint)                 | 打印设计器                                                         |
-| electron-hiprint         | [github](https://github.com/CcSimple/electron-hiprint)、[gitee](https://gitee.com/CcSimple/electron-hiprint)             | [releases](https://github.com/CcSimple/electron-hiprint/releases)       | 直接打印客户端                                                     |
-| node-hiprint-transit     | [github](https://github.com/Xavier9896/node-hiprint-transit)、[gitee](https://gitee.com/Xavier9896/node-hiprint-transit) | [releases](https://github.com/Xavier9896/node-hiprint-transit/releases) | web 与客户端中转服务 Node 实现                                     |
+| vue-plugin-hiprint       | [github](https://github.com/amDosion/vue3-print)                                                                         | [npm](https://www.npmjs.com/package/vue-plugin-hiprint)                 | 打印设计器                                                         |
+| electron-hiprint         | [github](https://github.com/amDosion/electron-hiprint)                                                                   | [releases](https://github.com/amDosion/electron-hiprint/releases)       | 直接打印客户端                                                     |
+| node-hiprint-transit     | [github](https://github.com/amDosion/node-hiprint-transit)                                                               | [packages](https://github.com/amDosion/node-hiprint-transit/pkgs/container/node-hiprint-transit) | web 与客户端中转服务 Node 实现                                     |
 | hiprint-transporter-java | [github](https://github.com/LyingDoc/hiprint-transit-java)、[gitee](https://gitee.com/dut_cc/hiprint-transporter-java)   | -                                                                       | web 与客户端中转服务 Java 实现                                     |
 | hiprint-transit-java     | [github](https://github.com/weaponready/hiprint-transit-java)                                                            | -                                                                       | web 与客户端中转服务 Java 实现                                     |
 | uni-app-hiprint          | [github](https://github.com/Xavier9896/uni-app-hiprint)                                                                  | -                                                                       | uni-app 项目通过 webview 使用 vue-plugin-hiprint demo              |
