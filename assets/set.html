@@ -188,7 +188,8 @@
               exportDirectoryPath: "",
               exportDirectoryDisplayName: "",
               exportDirectoryMaxMb: 50,
-              exportDirectoryAllowedExtensions: ".pdf,.json,.csv,.txt",
+              exportDirectoryAllowedExtensions:
+                ".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp,.txt,.json,.zip",
               exportDirectoryConflictPolicy: "rename",
             },
             // 预制的版本，解决部分内网无法获取新版本的问题
@@ -567,9 +568,11 @@
                   label: "允许扩展名",
                   prop: "exportDirectoryAllowedExtensions",
                   is: "el-input",
-                  tips: "逗号分隔，例如 .pdf,.json,.csv,.txt",
+                  tips:
+                    "逗号分隔，例如 .pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.png,.zip",
                   attrs: {
-                    placeholder: ".pdf,.json,.csv,.txt",
+                    placeholder:
+                      ".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.png,.zip",
                   },
                   span: 12,
                   display:
@@ -755,7 +758,7 @@
                 exportDirectory.allowedExtensions,
               )
                 ? exportDirectory.allowedExtensions.join(",")
-                : ".pdf,.json,.csv,.txt",
+                : ".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp,.txt,.json,.zip",
               exportDirectoryConflictPolicy:
                 exportDirectory.conflictPolicy || "rename",
             };
@@ -779,7 +782,21 @@
                   1048576,
                 allowedExtensions: allowedExtensions.length
                   ? Array.from(new Set(allowedExtensions))
-                  : [".pdf", ".json", ".csv", ".txt"],
+                  : [
+                      ".pdf",
+                      ".doc",
+                      ".docx",
+                      ".xls",
+                      ".xlsx",
+                      ".csv",
+                      ".jpg",
+                      ".jpeg",
+                      ".png",
+                      ".webp",
+                      ".txt",
+                      ".json",
+                      ".zip",
+                    ],
                 conflictPolicy:
                   data.exportDirectoryConflictPolicy || "rename",
               },
