@@ -1,57 +1,48 @@
-# HIPRINT-UPDATER: Settings Button Pulls Verified GitHub Release Upgrade
+# HIPRINT-UPDATER: Tray Menu Runs Verified GitHub Release Upgrade
 
 ## Context
 
-Users currently need a manually delivered installer to upgrade the client. The settings window should expose an online upgrade action that checks the latest GitHub Release, downloads the matching installer, verifies the release asset digest, and starts the upgrade installer.
+Online upgrade is an application-level action, not a persisted client setting. It should sit with the program tray actions such as "显示主窗口", "设置", "软件日志", "打印记录", "关于", and "退出".
+
+The previous implementation exposed `客户端在线升级` inside the advanced settings tab. That made the update action look like a configurable option and coupled update progress to the settings renderer IPC.
 
 Reference behavior:
 
 - GitHub Releases REST API returns release assets with `browser_download_url`, `size`, and `digest`.
-- Electron packaged apps can self-update from GitHub-hosted releases, but this project does not currently use an updater dependency.
+- The client should verify a matching Windows NSIS installer before launching it.
+- The entry point should be the tray context menu item `在线升级`.
 
-Reproduction script:
+## Reproduction Script
 
 ```powershell
 node tools/repro/updater/github-online-upgrade-check.js
 ```
 
-Current baseline reports:
+The regression script now checks that:
 
-- `UPDATER-MODULE-MISSING`
-- `UPDATER-GITHUB-LATEST-NOT-USED`
-- `UPDATER-ASSET-DIGEST-NOT-VERIFIED`
-- `UPDATER-INSTALLER-NOT-LAUNCHED`
-- `UPDATER-IPC-NOT-EXPOSED`
-- `UPDATER-SETTINGS-BUTTON-MISSING`
-
-## Implementation Progress
-
-2026-06-05 execution:
-
-- Added `tools/repro/updater/github-online-upgrade-check.js` before production edits; baseline reported `observed: 6`.
-- Added `src/online-update.js` with GitHub latest release lookup, semantic version comparison, Windows installer asset selection, trusted URL checks, and SHA256 digest verification.
-- Added the settings-window IPC action `checkOnlineUpgrade` and status event `onlineUpdateStatus`.
-- Added a `客户端在线升级` button to the advanced settings tab.
-- The regression script now reports `observed: 0`.
-- Verified the live GitHub latest release endpoint returns `1.0.19` with `hiprint_win_x64-1.0.19.exe` and a `sha256:` digest; local `1.0.20` correctly compares as not needing a downgrade.
-- Rebuilt `out\hiprint_win_x64-1.0.20.exe` and replaced the local installation; `%APPDATA%\electron-hiprint\config.json` hash remained `CF1EC086719830C3C745DFE650E8695B23842DCC878EE5DDF99F39C9FDFF4346`.
-- Verified the installed `app.asar` contains the online upgrade button, IPC whitelist, updater module, and silent installer launch path.
+- GitHub latest release lookup still uses `amDosion/electron-hiprint`.
+- Release asset SHA256 digest verification is required.
+- The verified installer is launched with `/S`.
+- The settings page and settings preload no longer expose online-upgrade IPC or buttons.
+- The tray context menu exposes `在线升级` and calls the program-level runner.
 
 ## Goal
 
-Add a manual online upgrade button in the settings window that safely upgrades from GitHub Releases.
+Move online upgrade out of advanced settings and into the tray right-click menu while preserving the verified GitHub Release upgrade path.
 
 ## Scope
 
-- Settings UI button and busy state.
-- Preload IPC allowlist for upgrade action and status events.
-- Main-process GitHub Release lookup, installer asset selection, digest verification, and installer launch.
+- Program-level online upgrade runner.
+- Tray menu entry and busy-state relabeling.
+- Removal of settings-page upgrade button and settings IPC channels.
 - Static/helper regression coverage.
 
 ## Acceptance Criteria
 
-- The settings window has a visible online upgrade action.
-- The renderer can only use explicit upgrade IPC channels exposed by preload.
+- The tray right-click menu contains `在线升级` at the same level as display/settings/logs/records/about/exit.
+- While an upgrade is in progress, the tray menu shows `升级处理中...` and prevents duplicate triggers.
+- The settings window does not show `客户端在线升级` or `检查并在线升级`.
+- The settings preload does not allow `checkOnlineUpgrade` or `onlineUpdateStatus`.
 - Upgrade checks the latest GitHub Release for `amDosion/electron-hiprint`.
 - The updater chooses the Windows x64 NSIS installer asset for the current package.
 - The updater rejects unsupported platforms, missing digest, non-HTTPS URLs, and non-GitHub download URLs.
@@ -59,10 +50,21 @@ Add a manual online upgrade button in the settings window that safely upgrades f
 - The installer is launched with the silent upgrade argument after user confirmation.
 - The upgrade path does not introduce a new runtime dependency.
 
+## Implementation Progress
+
+2026-06-05 execution:
+
+- Added `tools/repro/updater/github-online-upgrade-check.js` before production edits; original baseline reported missing updater behavior.
+- Added `src/online-update.js` with GitHub latest release lookup, semantic version comparison, Windows installer asset selection, trusted URL checks, and SHA256 digest verification.
+- Added `src/online-upgrade-runner.js` as the program-level update flow.
+- Added the tray context menu entry `在线升级`; it relabels to `升级处理中...` while busy.
+- Removed the advanced-settings `客户端在线升级` button.
+- Removed settings-window online-upgrade IPC and status channels.
+
 ## Verification
 
 ```powershell
 node tools/repro/updater/github-online-upgrade-check.js
-node --check src/online-update.js src/set.js src/preload/set.js tools/repro/updater/github-online-upgrade-check.js
+node --check main.js src/online-update.js src/online-upgrade-runner.js src/set.js src/preload/set.js tools/repro/updater/github-online-upgrade-check.js
 npm run build-w-64
 ```

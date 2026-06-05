@@ -21,7 +21,6 @@ const onChannels = new Set([
 
 contextBridge.exposeInMainWorld("hiprintIndex", {
   title: store.get("mainTitle") || "Electron-hiprint",
-  pluginVersion: store.get("pluginVersion") || "未指定",
   version,
   send(channel, data) {
     if (sendChannels.has(channel)) {

@@ -15,6 +15,7 @@ const {
 const dayjs = require("dayjs");
 const path = require("path");
 const db = require("../tools/database");
+const { getAssetUrl } = require("./asset-url");
 
 function createPrintLogWindow() {
   const windowOptions = {
@@ -25,6 +26,7 @@ function createPrintLogWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: false,
       preload: path.join(__dirname, "preload/printLog.js"),
     },
   };
@@ -36,12 +38,7 @@ function createPrintLogWindow() {
   loadingView(windowOptions);
 
   // 加载打印日志页面
-  const printLogHtml = path.join(
-    "file://",
-    app.getAppPath(),
-    "/assets/printLog.html",
-  );
-  PRINT_LOG_WINDOW.loadURL(printLogHtml);
+  PRINT_LOG_WINDOW.loadURL(getAssetUrl("printLog.html"));
 
   // 未打包时打开开发者工具
   if (!app.isPackaged) {
@@ -72,12 +69,7 @@ function loadingView(windowOptions) {
     height: windowOptions.height,
   });
 
-  const loadingHtml = path.join(
-    "file://",
-    app.getAppPath(),
-    "assets/loading.html",
-  );
-  loadingBrowserView.webContents.loadURL(loadingHtml);
+  loadingBrowserView.webContents.loadURL(getAssetUrl("loading.html"));
 
   // 打印日志窗口 dom 加载完毕，移除 loadingBrowserView
   PRINT_LOG_WINDOW.webContents.on("dom-ready", async (event) => {

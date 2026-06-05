@@ -15,23 +15,10 @@ const {
   shell,
 } = require("electron");
 const path = require("path");
-const childProcess = require("node:child_process");
-const https = require("node:https");
 const fs = require("node:fs");
-const crypto = require("node:crypto");
-const zlib = require("node:zlib");
 const { store } = require("../tools/utils");
+const { getAssetUrl } = require("./asset-url");
 const helper = require("./helper");
-const {
-  GITHUB_LATEST_RELEASE_URL,
-  compareVersions,
-  downloadVerifiedAsset,
-  getLatestGithubRelease,
-  getReleaseVersion,
-  selectReleaseAsset,
-} = require("./online-update");
-
-let onlineUpgradeInProgress = false;
 
 /**
  * @description: 创建设置窗口
@@ -49,6 +36,7 @@ async function createSetWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
       preload: path.join(__dirname, "preload/set.js"),
     },
   };
@@ -60,8 +48,7 @@ async function createSetWindow() {
   loadingView(windowOptions);
 
   // 加载设置渲染进程页面
-  const setHtmlUrl = path.join("file://", app.getAppPath(), "assets/set.html");
-  SET_WINDOW.webContents.loadURL(setHtmlUrl);
+  SET_WINDOW.webContents.loadURL(getAssetUrl("set.html"));
 
   // 未打包时打开开发者工具
   if (!app.isPackaged) {
@@ -73,11 +60,6 @@ async function createSetWindow() {
 
   // 监听退出，移除所有事件
   SET_WINDOW.on("closed", removeEvent);
-
-  SET_WINDOW.webContents.on("did-finish-load", () => {
-    const downloadedVersions = getDownloadedVersions();
-    SET_WINDOW.webContents.send("downloadedVersions", downloadedVersions);
-  });
 
   return SET_WINDOW;
 }
@@ -97,12 +79,7 @@ function loadingView(windowOptions) {
     height: windowOptions.height,
   });
 
-  const loadingHtml = path.join(
-    "file://",
-    app.getAppPath(),
-    "assets/loading.html",
-  );
-  loadingBrowserView.webContents.loadURL(loadingHtml);
+  loadingBrowserView.webContents.loadURL(getAssetUrl("loading.html"));
 
   // 设置窗口 dom 加载完毕，移除 loadingBrowserView
   SET_WINDOW.webContents.on("dom-ready", async (event) => {
@@ -180,272 +157,6 @@ function setConfig(event, data) {
         }, 500);
       }
     });
-}
-
-/**
- * @description: 渲染进程触发下载插件
- * @param {IpcMainEvent} event
- * @param {Object} data 客户端内部渲染插件版本号
- * @return {void}
- */
-function downloadPlugin(event, data) {
-  const fileList = ["vue-plugin-hiprint.js", "print-lock.css"];
-  downloadPluginFiles(data, fileList)
-    .then(() => {
-      dialog.showMessageBox(SET_WINDOW, {
-        type: "info",
-        title: "提示",
-        message: "插件下载成功！",
-        buttons: ["确定"],
-        noLink: true,
-      });
-      const downloadedVersions = getDownloadedVersions();
-      SET_WINDOW.webContents.send("downloadedVersions", downloadedVersions);
-    })
-    .catch(() => {
-      dialog.showMessageBox(SET_WINDOW, {
-        type: "error",
-        title: "提示",
-        message: "插件下载失败！",
-        buttons: ["确定"],
-        noLink: true,
-      });
-    });
-}
-
-function sendOnlineUpdateStatus(status) {
-  if (SET_WINDOW && !SET_WINDOW.isDestroyed()) {
-    SET_WINDOW.webContents.send("onlineUpdateStatus", status);
-  }
-}
-
-function formatBytes(bytes) {
-  if (!Number.isFinite(Number(bytes)) || Number(bytes) <= 0) return "未知大小";
-  return `${(Number(bytes) / 1048576).toFixed(1)} MB`;
-}
-
-function launchInstaller(filePath) {
-  return new Promise((resolve, reject) => {
-    const installer = childProcess.spawn(filePath, ["/S"], {
-      detached: true,
-      stdio: "ignore",
-    });
-    installer.once("error", reject);
-    installer.once("spawn", () => {
-      installer.unref();
-      resolve();
-    });
-  });
-}
-
-async function checkOnlineUpgrade() {
-  if (onlineUpgradeInProgress) return;
-  onlineUpgradeInProgress = true;
-  let installerLaunched = false;
-  sendOnlineUpdateStatus({
-    busy: true,
-    state: "checking",
-    message: "正在检查客户端更新...",
-  });
-
-  try {
-    if (!app.isPackaged) {
-      await dialog.showMessageBox(SET_WINDOW, {
-        type: "info",
-        title: "提示",
-        message: "开发环境不执行在线升级，请使用安装后的客户端验证。",
-        buttons: ["确定"],
-        noLink: true,
-      });
-      return;
-    }
-
-    const release = await getLatestGithubRelease();
-    const latestVersion = getReleaseVersion(release);
-    if (!latestVersion) {
-      throw new Error("GitHub Release 缺少有效版本号");
-    }
-
-    const currentVersion = app.getVersion();
-    if (compareVersions(latestVersion, currentVersion) <= 0) {
-      await dialog.showMessageBox(SET_WINDOW, {
-        type: "info",
-        title: "提示",
-        message: `当前已是最新版本：${currentVersion}`,
-        buttons: ["确定"],
-        noLink: true,
-      });
-      return;
-    }
-
-    const asset = selectReleaseAsset(release, process.platform, process.arch);
-    const confirmResult = await dialog.showMessageBox(SET_WINDOW, {
-      type: "question",
-      title: "发现新版本",
-      message: `发现新版本 ${latestVersion}，是否下载并升级？`,
-      detail: [
-        `当前版本：${currentVersion}`,
-        `安装包：${asset.name}`,
-        `大小：${formatBytes(asset.size)}`,
-        `来源：${GITHUB_LATEST_RELEASE_URL}`,
-      ].join("\n"),
-      buttons: ["下载并升级", "取消"],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
-    });
-    if (confirmResult.response !== 0) {
-      return;
-    }
-
-    const downloadPath = path.join(app.getPath("temp"), asset.name);
-    sendOnlineUpdateStatus({
-      busy: true,
-      state: "downloading",
-      message: `正在下载 ${latestVersion}...`,
-    });
-    const downloaded = await downloadVerifiedAsset(asset, downloadPath, {
-      onProgress: ({ bytes, totalBytes }) => {
-        sendOnlineUpdateStatus({
-          busy: true,
-          state: "downloading",
-          message: `正在下载 ${formatBytes(bytes)} / ${formatBytes(totalBytes)}`,
-        });
-      },
-    });
-
-    sendOnlineUpdateStatus({
-      busy: true,
-      state: "installing",
-      message: "安装包校验通过，正在启动升级...",
-    });
-    await launchInstaller(downloaded.filePath);
-    installerLaunched = true;
-    setTimeout(() => {
-      helper.appQuit();
-    }, 500);
-  } catch (error) {
-    console.error("在线升级失败:", error);
-    sendOnlineUpdateStatus({
-      busy: false,
-      state: "error",
-      message: error.message,
-    });
-    await dialog.showMessageBox(SET_WINDOW, {
-      type: "error",
-      title: "提示",
-      message: `在线升级失败：${error.message}`,
-      buttons: ["确定"],
-      noLink: true,
-    });
-  } finally {
-    onlineUpgradeInProgress = false;
-    if (!installerLaunched) {
-      sendOnlineUpdateStatus({
-        busy: false,
-        state: "idle",
-        message: "",
-      });
-    }
-  }
-}
-
-function httpsGetBuffer(url, redirects = 0) {
-  return new Promise((resolve, reject) => {
-    const request = https.get(url, (res) => {
-      if (
-        res.statusCode >= 300 &&
-        res.statusCode < 400 &&
-        res.headers.location &&
-        redirects < 3
-      ) {
-        res.resume();
-        const redirectedUrl = new URL(res.headers.location, url).href;
-        httpsGetBuffer(redirectedUrl, redirects + 1).then(resolve, reject);
-        return;
-      }
-      if (res.statusCode !== 200) {
-        res.resume();
-        reject(new Error(`下载失败，HTTP ${res.statusCode}`));
-        return;
-      }
-      const chunks = [];
-      res.on("data", (chunk) => chunks.push(chunk));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-    });
-    request.on("error", reject);
-    request.setTimeout(30000, () => {
-      request.destroy(new Error("下载超时"));
-    });
-  });
-}
-
-async function downloadPluginFiles(version, fileList) {
-  const metadataBuffer = await httpsGetBuffer(
-    `https://registry.npmmirror.com/vue-plugin-hiprint/${version}`,
-  );
-  const metadata = JSON.parse(metadataBuffer.toString("utf8"));
-  const tarballUrl = metadata.dist && metadata.dist.tarball;
-  const integrity = metadata.dist && metadata.dist.integrity;
-  if (!tarballUrl || !integrity) {
-    throw new Error("插件元数据缺少 tarball 或 integrity");
-  }
-
-  const tarballBuffer = await httpsGetBuffer(tarballUrl);
-  verifyNpmIntegrity(tarballBuffer, integrity);
-  const extractedFiles = extractDistFilesFromTarball(tarballBuffer, fileList);
-  const pluginDir = app.isPackaged
-    ? path.join(app.getAppPath(), "../", "plugin")
-    : path.join(app.getAppPath(), "plugin");
-  fs.mkdirSync(pluginDir, { recursive: true });
-  fileList.forEach((fileName) => {
-    const content = extractedFiles[fileName];
-    if (!content) {
-      throw new Error(`插件包缺少 dist/${fileName}`);
-    }
-    const filePath = path.join(pluginDir, `${version}_${fileName}`);
-    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tempPath, content, { flag: "wx" });
-    fs.renameSync(tempPath, filePath);
-  });
-}
-
-function verifyNpmIntegrity(buffer, integrity) {
-  const [algorithm, expected] = String(integrity).split("-", 2);
-  if (!["sha512", "sha384", "sha256"].includes(algorithm) || !expected) {
-    throw new Error("插件 integrity 格式不受支持");
-  }
-  const actual = crypto.createHash(algorithm).update(buffer).digest("base64");
-  if (actual !== expected) {
-    throw new Error("插件包完整性校验失败");
-  }
-}
-
-function extractDistFilesFromTarball(tarballBuffer, fileList) {
-  const tarBuffer = zlib.gunzipSync(tarballBuffer);
-  const wanted = new Set(fileList.map((fileName) => `package/dist/${fileName}`));
-  const extracted = {};
-  let offset = 0;
-  while (offset + 512 <= tarBuffer.length) {
-    const name = tarBuffer
-      .toString("utf8", offset, offset + 100)
-      .replace(/\0.*$/, "");
-    if (!name) break;
-    const sizeText = tarBuffer
-      .toString("utf8", offset + 124, offset + 136)
-      .replace(/\0.*$/, "")
-      .trim();
-    const size = parseInt(sizeText, 8) || 0;
-    const dataStart = offset + 512;
-    const dataEnd = dataStart + size;
-    if (wanted.has(name)) {
-      extracted[path.basename(name)] = Buffer.from(
-        tarBuffer.subarray(dataStart, dataEnd),
-      );
-    }
-    offset = dataStart + Math.ceil(size / 512) * 512;
-  }
-  return extracted;
 }
 
 /**
@@ -585,8 +296,6 @@ function initSetEvent() {
   ipcMain.on("openDirectory", openDirectory);
   ipcMain.on("testTransit", testTransit);
   ipcMain.on("closeSetWindow", closeSetWindow);
-  ipcMain.on("downloadPlugin", downloadPlugin);
-  ipcMain.on("checkOnlineUpgrade", checkOnlineUpgrade);
   ipcMain.on("getPrintersList", getPrintersList);
 }
 
@@ -602,24 +311,8 @@ function removeEvent() {
   ipcMain.removeListener("openDirectory", openDirectory);
   ipcMain.removeListener("testTransit", testTransit);
   ipcMain.removeListener("closeSetWindow", closeSetWindow);
-  ipcMain.removeListener("downloadPlugin", downloadPlugin);
-  ipcMain.removeListener("checkOnlineUpgrade", checkOnlineUpgrade);
   ipcMain.removeListener("getPrintersList", getPrintersList);
   SET_WINDOW = null;
-}
-
-function getDownloadedVersions() {
-  let pluginDir = path.join(app.getAppPath(), "plugin");
-  if (app.isPackaged) {
-    pluginDir = path.join(app.getAppPath(), "../", "plugin");
-  }
-  if (!fs.existsSync(pluginDir)) {
-    return [];
-  }
-  return fs
-    .readdirSync(pluginDir)
-    .filter((file) => file.endsWith(".js")) // 假设插件文件以 .js 结尾
-    .map((file) => file.split("_")[0]); // 提取版本号
 }
 
 /**

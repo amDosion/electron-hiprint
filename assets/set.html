@@ -13,8 +13,6 @@
     <link rel="stylesheet" href="./element-ui/index.css" />
     <script src="./js/vue.min.js"></script>
     <script src="./element-ui/index.js"></script>
-    <script src="./js/dayjs.min.js"></script>
-    <script src="./js/lodash.min.js"></script>
     <style>
       html,
       body {
@@ -169,7 +167,6 @@
             formData: {
               port: 17521,
               token: "",
-              pluginVersion: "",
               openAtLogin: false,
               openAsHidden: false,
               connectTransit: false,
@@ -189,28 +186,7 @@
                 ".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp,.txt,.json,.zip",
               exportDirectoryConflictPolicy: "rename",
             },
-            // 预制的版本，解决部分内网无法获取新版本的问题
-            versions: [
-              {
-                value: "0.0.60",
-                info: "2025/03/24 17:25:24",
-              },
-              {
-                value: "0.0.56",
-                info: "2023/11/19 22:43:45",
-              },
-              {
-                value: "0.0.54-fix",
-                info: "2023/07/10 10:34:19",
-              },
-              {
-                value: "0.0.52",
-                info: "2023/05/08 17:57:53",
-              },
-            ],
-            downloadedVersions: [], // 存储已下载版本
             printerList: [], // 打印机列表
-            onlineUpgradeBusy: false,
           };
         },
         computed: {
@@ -268,72 +244,6 @@
                     placeholder: "请输入便于识别的别名",
                   },
                   tips: "方便识别的友好名称",
-                  display: this.setTab === "basicSet",
-                },
-                {
-                  label: "内置渲染插件版本",
-                  prop: "pluginVersion",
-                  is: "el-select",
-                  optionIs: "el-option",
-                  tips: "仅用于客户端内部 render api 的兼容渲染包，不是 vue-admin 使用的 V3 插件包版本",
-                  attrs: {
-                    filterable: true,
-                    defaultFirstOption: true,
-                  },
-                  options: this.versions,
-                  optionRender: (h, option) => {
-                    const isDownloaded = this.downloadedVersions.includes(
-                      option.value,
-                    );
-                    return h(
-                      "div",
-                      {
-                        style: {
-                          display: "flex",
-                          justifyContent: "space-between",
-                        },
-                      },
-                      [
-                        h(
-                          "span",
-                          {
-                            style: {
-                              fontFamily: "monospace",
-                            },
-                          },
-                          option.value,
-                        ),
-                        h(
-                          "span",
-                          {
-                            style: {
-                              fontFamily: "monospace",
-                            },
-                          },
-                          [
-                            option.info,
-                            h("i", {
-                              class: "el-icon-success",
-                              style: {
-                                color: isDownloaded ? "#67C23A" : "transparent",
-                                marginLeft: "4px",
-                              },
-                            }),
-                          ],
-                        ),
-                      ],
-                    );
-                  },
-                  event: {
-                    change: (val) => {
-                      const isDownloaded = this.downloadedVersions.includes(
-                        val,
-                      );
-                      if (!isDownloaded) {
-                        ipc.send("downloadPlugin", val);
-                      }
-                    },
-                  },
                   display: this.setTab === "basicSet",
                 },
                 {
@@ -607,24 +517,6 @@
                   display: this.setTab === "advancedSet",
                 },
                 {
-                  label: "客户端在线升级",
-                  is: "el-button",
-                  tips: "从 GitHub Release 下载最新安装包，校验通过后启动升级",
-                  attrs: {
-                    type: "primary",
-                    icon: "el-icon-upload2",
-                    loading: this.onlineUpgradeBusy,
-                    disabled: this.onlineUpgradeBusy,
-                  },
-                  event: {
-                    click: this.checkOnlineUpgrade,
-                  },
-                  content: this.onlineUpgradeBusy
-                    ? "升级处理中..."
-                    : "检查并在线升级",
-                  display: this.setTab === "advancedSet",
-                },
-                {
                   label: "关闭主窗口动作",
                   prop: "closeType",
                   is: "el-radio-group",
@@ -666,7 +558,6 @@
           this.onEvents();
           // 获取配置
           this.formData = this.inflateFormData(store.store);
-          this.getVersions();
           this.getPrintersList();
         },
         mounted() {
@@ -674,19 +565,11 @@
         },
         beforeDestroy() {
           ipc.removeAllListeners("openDialog");
-          ipc.removeAllListeners("onlineUpdateStatus");
         },
         methods: {
           onEvents() {
-            ipc.on("downloadedVersions", (event, versions) => {
-              this.downloadedVersions = versions;
-              this.mergeDownloadedVersions();
-            });
             ipc.on("getPrintersList", (event, printers) => {
               this.printerList = printers;
-            });
-            ipc.on("onlineUpdateStatus", (event, status) => {
-              this.onlineUpgradeBusy = status && status.busy === true;
             });
           },
           handleTabChange() {
@@ -837,68 +720,11 @@
             ipc.send("closeSetWindow");
           },
           /**
-           * @description: 获取在线版本信息
-           * @return {void}
-           */
-          getVersions() {
-            const xhr = new XMLHttpRequest();
-            // cnpm 源
-            xhr.open(
-              "GET",
-              "https://registry.npmmirror.com/vue-plugin-hiprint",
-            );
-            xhr.onload = () => {
-              if (xhr.status === 200) {
-                this.npmInfo = JSON.parse(xhr.responseText);
-                this.versions = _.orderBy(
-                  _.map(this.npmInfo.versions, ({ version }) => ({
-                    value: version,
-                    time: dayjs(this.npmInfo.time[version]).valueOf(),
-                    info: dayjs(this.npmInfo.time[version]).format(
-                      "YYYY/MM/DD HH:mm:ss",
-                    ),
-                  })),
-                  "time",
-                  "desc",
-                );
-                this.mergeDownloadedVersions();
-              }
-            };
-            xhr.onerror = () => {
-              this.mergeDownloadedVersions();
-            };
-            xhr.send();
-          },
-          mergeDownloadedVersions() {
-            const versionMap = new Map(
-              this.versions.map((item) => [item.value, item]),
-            );
-            this.downloadedVersions.forEach((version) => {
-              if (!versionMap.has(version)) {
-                versionMap.set(version, {
-                  value: version,
-                  time: Number.MAX_SAFE_INTEGER,
-                  info: "内置",
-                });
-              }
-            });
-            this.versions = _.orderBy(
-              Array.from(versionMap.values()),
-              ["time", "value"],
-              ["desc", "desc"],
-            );
-          },
-          /**
            * @description: 获取打印机列表
            * @return {void}
            */
           getPrintersList() {
             ipc.send("getPrintersList"); // 请求打印机列表
-          },
-          checkOnlineUpgrade() {
-            if (!this.onlineUpgradeBusy) {
-              ipc.send("checkOnlineUpgrade");
-            }
           },
         },
       });

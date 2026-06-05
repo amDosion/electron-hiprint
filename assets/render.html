@@ -26,6 +26,9 @@
     <script>
       const ipc = window.hiprintRender;
       window.autoConnect = false;
+      window.process = window.process || { env: {} };
+      window.process.env = window.process.env || {};
+      window.process.env.NODE_ENV = window.process.env.NODE_ENV || "production";
       window["bwip-js"] = window.bwipjs;
       window.template = undefined;
       window.io = () => {};
@@ -102,11 +105,14 @@
         script.setAttribute("src", scriptSrc);
         script.onload = () => {
           const pluginGlobal =
-            window["vue-plugin-hiprint"] || window.VuePluginHiprint;
+            window["vue-plugin-hiprint"] ||
+            window.VuePluginHiprint ||
+            window["@amdosion/vue3-print"] ||
+            window.Vue3Print;
           if (!pluginGlobal || !pluginGlobal.hiprint) {
             ipc.send("showMessageBox", {
               title: "插件加载错误",
-              message: `【${pluginVersion}】版本未暴露 hiprint，请重新在设置中指定版本！`,
+              message: `【${pluginVersion}】版本未暴露 hiprint，请升级客户端或重新启动后重试！`,
               type: "error",
               buttons: ["我知道了"],
             });
@@ -181,10 +187,10 @@
             });
           });
         };
-        script.onerror = () => {
-          ipc.send("showMessageBox", {
-            title: "插件加载错误",
-            message: `无法从插件缓存中加载【${pluginVersion}】版本，请重新在设置中指定版本！`,
+      script.onerror = () => {
+        ipc.send("showMessageBox", {
+          title: "插件加载错误",
+          message: `无法从插件缓存中加载【${pluginVersion}】版本，请升级客户端或重新启动后重试！`,
             type: "error",
             buttons: ["我知道了"],
           });

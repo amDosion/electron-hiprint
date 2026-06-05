@@ -22,6 +22,9 @@ const printSetup = require("./src/print");
 const renderSetup = require("./src/render");
 const setSetup = require("./src/set");
 const printLogSetup = require("./src/printLog");
+const { getAssetUrl } = require("./src/asset-url");
+const { syncLatestBuiltinPluginWithFallback } = require("./src/plugin-sync");
+const { runOnlineUpgrade } = require("./src/online-upgrade-runner");
 const {
   store,
   address,
@@ -141,6 +144,11 @@ const ioServer = (global.SOCKET_SERVER = new require("socket.io")(server, {
 const ioClient = require("socket.io-client").io;
 let localServicesStarted = false;
 let localSocketEventsInitialized = false;
+let onlineUpgradeTrayState = {
+  busy: false,
+  message: "",
+  state: "idle",
+};
 
 server.on("error", (error) => {
   localServicesStarted = false;
@@ -269,6 +277,7 @@ async function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
       preload: path.join(__dirname, "src/preload/index.js"),
     },
   };
@@ -292,9 +301,10 @@ async function createWindow() {
   // 初始化系统设置
   systemSetup();
 
+  await ensureBuiltinPlugin();
+
   // 加载主页面
-  const indexHtml = path.join("file://", app.getAppPath(), "assets/index.html");
-  MAIN_WINDOW.webContents.loadURL(indexHtml);
+  MAIN_WINDOW.webContents.loadURL(getAssetUrl("index.html"));
 
   // 退出
   MAIN_WINDOW.on("closed", () => {
@@ -346,6 +356,21 @@ async function createWindow() {
   return MAIN_WINDOW;
 }
 
+async function ensureBuiltinPlugin() {
+  try {
+    const result = await syncLatestBuiltinPluginWithFallback();
+    console.log(
+      `==> 内置渲染插件 ${result.downloaded ? "已下载并启用" : "已启用"}: ${
+        result.pluginVersion
+      } <==`,
+    );
+  } catch (error) {
+    console.error(
+      `==> 内置渲染插件自动同步失败，回退到 ${error.fallbackVersion}: ${error.message} <==`,
+    );
+  }
+}
+
 /**
  * @description: 加载等待页面，解决主窗口白屏问题
  * @param {Object} windowOptions 主窗口配置
@@ -361,12 +386,7 @@ function loadingView(windowOptions) {
     height: windowOptions.height,
   });
 
-  const loadingHtml = path.join(
-    "file://",
-    app.getAppPath(),
-    "assets/loading.html",
-  );
-  loadingBrowserView.webContents.loadURL(loadingHtml);
+  loadingBrowserView.webContents.loadURL(getAssetUrl("loading.html"));
 
   // 主窗口 dom 加载完毕，移除 loadingBrowserView
   MAIN_WINDOW.webContents.on("dom-ready", async (event) => {
@@ -416,8 +436,18 @@ function initTray() {
   // 托盘提示标题
   APP_TRAY.setToolTip("hiprint");
 
-  // 托盘菜单
-  const trayMenuTemplate = [
+  refreshTrayMenu();
+
+  // 监听点击事件
+  APP_TRAY.on("click", function() {
+    console.log("==>TRAY 点击托盘图标<==");
+    showMainWindow();
+  });
+  return APP_TRAY;
+}
+
+function buildTrayMenuTemplate() {
+  return [
     {
       // 神知道为什么 linux 上无法识别 tray click、double-click，只能添加一个菜单
       label: "显示主窗口",
@@ -451,6 +481,17 @@ function initTray() {
       },
     },
     {
+      label: onlineUpgradeTrayState.busy ? "升级处理中..." : "在线升级",
+      enabled: !onlineUpgradeTrayState.busy,
+      click: () => {
+        console.log("==>TRAY 在线升级<==");
+        runOnlineUpgrade({
+          parentWindow: MAIN_WINDOW,
+          onStatus: updateOnlineUpgradeTrayState,
+        });
+      },
+    },
+    {
       label: "关于",
       click: () => {
         console.log("==>TRAY 打开关于弹框<==");
@@ -465,15 +506,21 @@ function initTray() {
       },
     },
   ];
+}
 
-  APP_TRAY.setContextMenu(Menu.buildFromTemplate(trayMenuTemplate));
+function updateOnlineUpgradeTrayState(status) {
+  onlineUpgradeTrayState = {
+    busy: status && status.busy === true,
+    message: (status && status.message) || "",
+    state: (status && status.state) || "idle",
+  };
+  refreshTrayMenu();
+}
 
-  // 监听点击事件
-  APP_TRAY.on("click", function() {
-    console.log("==>TRAY 点击托盘图标<==");
-    showMainWindow();
-  });
-  return APP_TRAY;
+function refreshTrayMenu() {
+  if (APP_TRAY) {
+    APP_TRAY.setContextMenu(Menu.buildFromTemplate(buildTrayMenuTemplate()));
+  }
 }
 
 /**

@@ -6,6 +6,7 @@ const path = require("path");
 const { Jimp } = require("jimp");
 const dayjs = require("dayjs");
 
+const { getAssetUrl } = require("./asset-url");
 const { store, getCurrentPrintStatusByName } = require("../tools/utils");
 const db = require("../tools/database");
 
@@ -74,6 +75,7 @@ async function createRenderWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
       preload: path.join(__dirname, "preload/render.js"),
     },
     // 为窗口设置背景色可能优化字体模糊问题
@@ -85,8 +87,7 @@ async function createRenderWindow() {
   RENDER_WINDOW = new BrowserWindow(windowOptions);
 
   // 加载打印渲染进程页面
-  let printHtml = path.join("file://", app.getAppPath(), "/assets/render.html");
-  RENDER_WINDOW.webContents.loadURL(printHtml);
+  RENDER_WINDOW.webContents.loadURL(getAssetUrl("render.html"));
 
   RENDER_WINDOW.on("ready-to-show", () => {
     const windowBounds = RENDER_WINDOW.getBounds();

@@ -11,10 +11,13 @@ function readText(relativePath) {
 }
 
 const setJs = readText("src/set.js");
+const mainJs = readText("main.js");
 const preloadSetJs = readText("src/preload/set.js");
 const setHtml = readText("assets/set.html");
 const updaterPath = path.join(repoRoot, "src/online-update.js");
 const updaterText = readText("src/online-update.js");
+const runnerPath = path.join(repoRoot, "src/online-upgrade-runner.js");
+const runnerText = readText("src/online-upgrade-runner.js");
 const risks = [];
 
 function expect(condition, id, severity, detail) {
@@ -31,10 +34,17 @@ expect(
 );
 
 expect(
+  fs.existsSync(runnerPath),
+  "UPDATER-RUNNER-MISSING",
+  "high",
+  "Program-level online upgrade flow should live outside the settings window module.",
+);
+
+expect(
   /GITHUB_OWNER\s*=\s*"amDosion"/.test(updaterText) &&
     /GITHUB_REPO\s*=\s*"electron-hiprint"/.test(updaterText) &&
     /releases\/latest/.test(updaterText) &&
-    /getLatestGithubRelease/.test(setJs),
+    /getLatestGithubRelease/.test(runnerText),
   "UPDATER-GITHUB-LATEST-NOT-USED",
   "high",
   "Online upgrade should check the repository's latest GitHub Release.",
@@ -50,25 +60,38 @@ expect(
 );
 
 expect(
-  /spawn\(/.test(setJs) && /\/S/.test(setJs),
+  /spawn\(/.test(runnerText) && /\/S/.test(runnerText),
   "UPDATER-INSTALLER-NOT-LAUNCHED",
   "high",
   "A verified Windows installer should be launched with the silent upgrade argument.",
 );
 
 expect(
-  /checkOnlineUpgrade/.test(preloadSetJs) &&
-    /onlineUpdateStatus/.test(preloadSetJs),
-  "UPDATER-IPC-NOT-EXPOSED",
+  !/checkOnlineUpgrade/.test(preloadSetJs) &&
+    !/onlineUpdateStatus/.test(preloadSetJs) &&
+    !/checkOnlineUpgrade/.test(setJs),
+  "UPDATER-SETTINGS-IPC-STILL-EXPOSED",
   "high",
-  "The settings preload should explicitly allow the online upgrade send/status channels.",
+  "The settings window should not expose the program-level online upgrade IPC channels.",
 );
 
 expect(
-  /checkOnlineUpgrade/.test(setHtml) && /在线升级|检查升级/.test(setHtml),
-  "UPDATER-SETTINGS-BUTTON-MISSING",
+  !/checkOnlineUpgrade/.test(setHtml) &&
+    !/客户端在线升级/.test(setHtml) &&
+    !/检查并在线升级/.test(setHtml),
+  "UPDATER-SETTINGS-BUTTON-STILL-PRESENT",
   "medium",
-  "The settings UI should expose an online upgrade button.",
+  "The settings UI should not expose the online upgrade button.",
+);
+
+expect(
+  mainJs.includes('"在线升级"') &&
+    mainJs.includes('"升级处理中..."') &&
+    /runOnlineUpgrade/.test(mainJs) &&
+    /buildTrayMenuTemplate/.test(mainJs),
+  "UPDATER-TRAY-MENU-ENTRY-MISSING",
+  "high",
+  "The tray context menu should expose online upgrade at the same level as settings/logs/about/exit.",
 );
 
 if (fs.existsSync(updaterPath)) {

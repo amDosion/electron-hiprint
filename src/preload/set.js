@@ -11,14 +11,10 @@ const sendChannels = new Set([
   "openDirectory",
   "testTransit",
   "closeSetWindow",
-  "downloadPlugin",
-  "checkOnlineUpgrade",
   "getPrintersList",
 ]);
 const onChannels = new Set([
-  "downloadedVersions",
   "getPrintersList",
-  "onlineUpdateStatus",
   "openDialog",
 ]);
 

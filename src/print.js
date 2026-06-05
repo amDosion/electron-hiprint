@@ -5,6 +5,7 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 const { printPdf, printPdfBlob } = require("./pdf-print");
+const { getAssetUrl } = require("./asset-url");
 const { store, getCurrentPrintStatusByName } = require("../tools/utils");
 const db = require("../tools/database");
 const dayjs = require("dayjs");
@@ -22,6 +23,7 @@ async function createPrintWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
       preload: path.join(__dirname, "preload/print.js"),
     },
     // 为窗口设置背景色可能优化字体模糊问题
@@ -33,8 +35,7 @@ async function createPrintWindow() {
   PRINT_WINDOW = new BrowserWindow(windowOptions);
 
   // 加载打印渲染进程页面
-  let printHtml = path.join("file://", app.getAppPath(), "/assets/print.html");
-  PRINT_WINDOW.webContents.loadURL(printHtml);
+  PRINT_WINDOW.webContents.loadURL(getAssetUrl("print.html"));
 
   // 未打包时打开开发者工具
   // if (!app.isPackaged) {

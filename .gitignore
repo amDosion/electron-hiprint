@@ -19,3 +19,5 @@ out/
 .omx/
 tools/database.sqlite
 /build-info.json
+.investigations/
+/plugin/1.0.11_*
