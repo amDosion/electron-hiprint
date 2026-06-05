@@ -54,7 +54,7 @@ The static script currently exits `1` and reports these reproduced risks:
 - Final static verification reports `observed: 0`.
 - Runtime verification passed against both a development Electron instance on `127.0.0.1:17522` and packaged `out/win-unpacked/hiprint.exe` on `127.0.0.1:17523`.
 - `npm audit --json` reports 0 vulnerabilities.
-- `npm run build-w-64` produced `out/hiprint_win_x64-1.0.19.exe`.
+- Initial execution produced `out/hiprint_win_x64-1.0.19.exe`; installer-upgrade follow-up bumped the release to `1.0.20`.
 
 ## Global Acceptance Gate
 

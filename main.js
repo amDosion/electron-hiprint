@@ -196,6 +196,7 @@ async function initialize() {
   if (!gotTheLock) {
     // 销毁所有窗口、托盘、退出应用
     helper.appQuit();
+    return;
   }
 
   // 当运行第二个实例时,聚焦到 MAIN_WINDOW 这个窗口
