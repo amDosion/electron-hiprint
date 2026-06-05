@@ -30,6 +30,7 @@ const {
   address,
   initServeEvent,
   initClientEvent,
+  emitConnectionStatus,
   getMachineId,
   showAboutDialog,
 } = require("./tools/utils");
@@ -246,6 +247,11 @@ async function initialize() {
         port: store.get("port"),
       });
     });
+  });
+
+  // 获取主窗口当前连接状态，避免只依赖 socket 增量事件导致初始显示过期。
+  ipcMain.on("getConnectionStatus", (event) => {
+    emitConnectionStatus(event.sender);
   });
 
   // 当electron完成初始化

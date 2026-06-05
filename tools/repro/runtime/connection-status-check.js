@@ -1,0 +1,91 @@
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+
+const repoRoot = path.resolve(__dirname, "../../..");
+
+function readText(relativePath) {
+  return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
+
+const mainJs = readText("main.js");
+const preloadIndexJs = readText("src/preload/index.js");
+const indexHtml = readText("assets/index.html");
+const utilsJs = readText("tools/utils.js");
+const setJs = readText("src/set.js");
+const risks = [];
+
+function expect(condition, id, severity, detail) {
+  if (!condition) {
+    risks.push({ id, severity, detail });
+  }
+}
+
+expect(
+  /ipcMain\.on\(\s*["']getConnectionStatus["']/.test(mainJs) &&
+    /emitConnectionStatus\(event\.sender\)/.test(mainJs) &&
+    /function emitConnectionStatus/.test(utilsJs) &&
+    /target\.send\(\s*["']connectionStatus["']/.test(utilsJs),
+  "CONNECTION-STATUS-MAIN-SNAPSHOT-MISSING",
+  "high",
+  "The main process should answer a renderer request with the current local client count, transit connection state, and print busy state.",
+);
+
+expect(
+  /"getConnectionStatus"/.test(preloadIndexJs) &&
+    /"connectionStatus"/.test(preloadIndexJs),
+  "CONNECTION-STATUS-PRELOAD-CHANNEL-MISSING",
+  "high",
+  "The index preload should explicitly allow the request and response channels for the connection status snapshot.",
+);
+
+expect(
+  /ipc\.send\(\s*["']getConnectionStatus["']/.test(indexHtml) &&
+    /ipc\.on\(\s*["']connectionStatus["']/.test(indexHtml),
+  "CONNECTION-STATUS-RENDERER-SNAPSHOT-MISSING",
+  "high",
+  "The main window should request an initial status snapshot after registering IPC listeners, so it does not depend only on earlier socket events.",
+);
+
+expect(
+  /updateConnectionStatus/.test(indexHtml) &&
+    /localClientCount/.test(indexHtml) &&
+    /transitConnected/.test(indexHtml),
+  "CONNECTION-STATUS-RENDERER-MERGE-MISSING",
+  "high",
+  "The renderer should merge the snapshot fields into the same state used by subsequent socket events.",
+);
+
+expect(
+  /connect_error/.test(utilsJs) &&
+    /emitConnectionStatus/.test(utilsJs),
+  "TRANSIT-RUNTIME-CONNECT-ERROR-UNOBSERVED",
+  "medium",
+  "The runtime transit socket should report connection failures and emit a false status, not leave the UI at its default without diagnostics.",
+);
+
+expect(
+  /本地客户端|外部连接/.test(indexHtml) &&
+    !/本地连接：\s*[\r\n\s]*<span>[\s\S]*\? `已建立/.test(indexHtml),
+  "LOCAL-CONNECTION-LABEL-MISLEADING",
+  "medium",
+  'The main window should not label external socket client count as "本地连接：未连接", because the local service can be running with zero connected web/plugin clients.',
+);
+
+expect(
+  /app\.relaunch\(\)/.test(setJs) &&
+    /保存设置需要重启软件/.test(setJs),
+  "SETTINGS-TRANSIT-RESTART-CONTRACT-MISSING",
+  "low",
+  "Saving transit settings should keep the explicit restart contract unless runtime reconnect is implemented and verified.",
+);
+
+const result = {
+  repoRoot,
+  observed: risks.length,
+  risks,
+};
+
+console.log(JSON.stringify(result, null, 2));
+process.exitCode = risks.length > 0 ? 1 : 0;

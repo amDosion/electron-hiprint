@@ -853,10 +853,8 @@ function initServeEvent(server) {
     console.log(`==> 插件端 New Connected: ${socket.id}`);
 
     // 通知渲染进程已连接
-    MAIN_WINDOW.webContents.send(
-      "serverConnection",
-      server.engine.clientsCount,
-    );
+    sendMainWindow("serverConnection", server.engine.clientsCount);
+    emitConnectionStatus();
 
     // 判断是否允许通知
     if (store.get("allowNotify")) {
@@ -1148,12 +1146,52 @@ function initServeEvent(server) {
      */
     socket.on("disconnect", () => {
       console.log(`==> 插件端 Disconnect: ${socket.id}`);
-      MAIN_WINDOW?.webContents?.send(
-        "serverConnection",
-        server.engine.clientsCount,
-      );
+      sendMainWindow("serverConnection", server.engine.clientsCount);
+      emitConnectionStatus();
     });
   });
+}
+
+let transitConnectionError = "";
+
+function getPrintBusy() {
+  return !!(
+    global.PRINT_RUNNER &&
+    typeof global.PRINT_RUNNER.isBusy === "function" &&
+    global.PRINT_RUNNER.isBusy()
+  );
+}
+
+function getConnectionStatus() {
+  const clientsCount =
+    global.SOCKET_SERVER &&
+    global.SOCKET_SERVER.engine &&
+    Number(global.SOCKET_SERVER.engine.clientsCount);
+  const transitConnected = !!(
+    global.SOCKET_CLIENT && global.SOCKET_CLIENT.connected
+  );
+
+  return {
+    localClientCount: Number.isFinite(clientsCount) ? clientsCount : 0,
+    transitConnected,
+    transitErrorMessage: transitConnected ? "" : transitConnectionError,
+    printing: getPrintBusy(),
+  };
+}
+
+function sendMainWindow(channel, payload) {
+  const webContents = global.MAIN_WINDOW && global.MAIN_WINDOW.webContents;
+  if (!webContents || webContents.isDestroyed()) return false;
+  webContents.send(channel, payload);
+  return true;
+}
+
+function emitConnectionStatus(webContents) {
+  const target =
+    webContents || (global.MAIN_WINDOW && global.MAIN_WINDOW.webContents);
+  if (!target || target.isDestroyed()) return false;
+  target.send("connectionStatus", getConnectionStatus());
+  return true;
 }
 
 /**
@@ -1169,8 +1207,10 @@ function initClientEvent() {
    */
   client.on("connect", async () => {
     console.log(`==> 中转服务 Connected Transit Server: ${client.id}`);
+    transitConnectionError = "";
     // 通知渲染进程已连接
-    MAIN_WINDOW.webContents.send("clientConnection", true);
+    sendMainWindow("clientConnection", true);
+    emitConnectionStatus();
 
     // 判断是否允许通知
     if (store.get("allowNotify")) {
@@ -1379,9 +1419,22 @@ function initClientEvent() {
   /**
    * @description: 中转服务 断开连接
    */
-  client.on("disconnect", () => {
+  client.on("disconnect", (reason) => {
     console.log(`==> 中转服务 Disconnect: ${client.id}`);
-    MAIN_WINDOW.webContents.send("clientConnection", false);
+    transitConnectionError = reason || "";
+    sendMainWindow("clientConnection", false);
+    emitConnectionStatus();
+  });
+
+  /**
+   * @description: 中转服务连接失败
+   */
+  client.on("connect_error", (error) => {
+    transitConnectionError =
+      (error && error.message) || "连接中转服务器失败";
+    console.error(`==> 中转服务 Connect Error: ${transitConnectionError}`);
+    sendMainWindow("clientConnection", false);
+    emitConnectionStatus();
   });
 }
 
@@ -1454,6 +1507,8 @@ module.exports = {
   address: _address,
   initServeEvent,
   initClientEvent,
+  getConnectionStatus,
+  emitConnectionStatus,
   getCurrentPrintStatusByName,
   getMachineId,
   showAboutDialog,

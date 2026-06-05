@@ -8,12 +8,14 @@ const store = new Store();
 const sendChannels = new Set([
   "getMachineId",
   "getAddress",
+  "getConnectionStatus",
   "openSetting",
   "notification",
 ]);
 const onChannels = new Set([
   "machineId",
   "address",
+  "connectionStatus",
   "serverConnection",
   "printTask",
   "clientConnection",

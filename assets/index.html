@@ -50,13 +50,10 @@
         </div>
         <div class="status">
           <div class="message">
-            中转状态: <span>{{ transitActiveFlag ? '已' : '未' }}连接</span>
+            中转状态: <span :title="transitErrorMessage">{{ transitStatusText }}</span>
           </div>
           <div class="message">
-            本地连接：
-            <span>
-              {{ socketActiveNum ? `已建立 ${socketActiveNum} 条` : '未' }}连接
-            </span>
+            本地客户端：<span>{{ localClientStatusText }}</span>
           </div>
           <div class="message">
             打印状态：<span>{{ printing ? "文档打印中" : "空闲" }}</span>
@@ -81,11 +78,23 @@
             ipAddress: "",
             deviceId: "",
             transitActiveFlag: false,
+            transitErrorMessage: "",
             socketActiveNum: 0,
             printing: false,
             displayPrivate: true,
             version: ipc.version,
           };
+        },
+        computed: {
+          transitStatusText() {
+            if (this.transitActiveFlag) return "已连接";
+            return this.transitErrorMessage ? "连接失败" : "未连接";
+          },
+          localClientStatusText() {
+            return this.socketActiveNum
+              ? `已连接 ${this.socketActiveNum} 条`
+              : "暂无连接";
+          },
         },
         created() {
           ipc.send("getMachineId");
@@ -102,6 +111,8 @@
             this.printing = arg;
           });
           ipc.on("clientConnection", this.transitActive);
+          ipc.on("connectionStatus", this.updateConnectionStatus);
+          ipc.send("getConnectionStatus");
         },
         methods: {
           openSetting() {
@@ -125,6 +136,22 @@
           },
           transitActive(event, arg) {
             this.transitActiveFlag = arg;
+            if (arg) this.transitErrorMessage = "";
+          },
+          updateConnectionStatus(event, arg) {
+            if (!arg || typeof arg !== "object") return;
+            if (Number.isFinite(Number(arg.localClientCount))) {
+              this.socketActiveNum = Number(arg.localClientCount);
+            }
+            if (typeof arg.transitConnected === "boolean") {
+              this.transitActiveFlag = arg.transitConnected;
+            }
+            if (typeof arg.transitErrorMessage === "string") {
+              this.transitErrorMessage = arg.transitErrorMessage;
+            }
+            if (typeof arg.printing === "boolean") {
+              this.printing = arg.printing;
+            }
           },
         },
       });
