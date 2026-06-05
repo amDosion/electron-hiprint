@@ -148,9 +148,7 @@
     </div>
 
     <script>
-      const { ipcRenderer } = require("electron");
-      const Store = require("electron-store");
-      const store = new Store();
+      const ipc = window.hiprintPrintLog;
 
       new Vue({
         el: "#app",
@@ -327,12 +325,12 @@
         },
         computed: {
           rePrintAble() {
-            return store.get("rePrint");
+            return ipc.rePrintAble;
           },
         },
         created() {
           this.fetchLogs();
-          ipcRenderer.on("print-logs", (event, { rows, total }) => {
+          ipc.onPrintLogs((event, { rows, total }) => {
             this.logs = rows;
             this.tableOptions.total = total;
           });
@@ -364,7 +362,7 @@
               currentPage: this.tableOptions.currentPage,
               pageSize: this.tableOptions.pageSize,
             };
-            ipcRenderer.send("request-logs", {
+            ipc.send("request-logs", {
               condition,
               params,
               page,
@@ -406,7 +404,7 @@
               closeOnClickModal: false,
               closeOnPressEscape: false,
             }).then(() => {
-              ipcRenderer.send("clear-logs");
+              ipc.send("clear-logs");
               this.logs = [];
               this.tableOptions.total = 0;
             });
@@ -415,7 +413,7 @@
            * 处理重打
            */
           handleRePrint(row) {
-            ipcRenderer.send("reprint", row);
+            ipc.send("reprint", row);
           },
         },
       });

@@ -23,8 +23,9 @@ function createPrintLogWindow() {
     minWidth: 1040,
     minHeight: 550,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload/printLog.js"),
     },
   };
 

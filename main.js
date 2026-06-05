@@ -35,6 +35,29 @@ const TaskRunner = require("concurrent-tasks");
 const dayjs = require("dayjs");
 
 const logPath = store.get("logPath") || app.getPath("logs");
+const SOCKET_MAX_HTTP_BUFFER_SIZE = 52428800;
+
+function isLoopbackOrigin(requestOrigin) {
+  if (!requestOrigin) return true;
+  try {
+    const { hostname } = new URL(requestOrigin);
+    return ["localhost", "127.0.0.1", "::1"].includes(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function getAllowedSocketOrigins() {
+  const configured = store.get("allowedOrigins");
+  return Array.isArray(configured)
+    ? configured.filter((origin) => typeof origin === "string" && origin)
+    : [];
+}
+
+function isAllowedSocketOrigin(requestOrigin) {
+  if (isLoopbackOrigin(requestOrigin)) return true;
+  return getAllowedSocketOrigins().includes(requestOrigin);
+}
 
 Object.assign(console, electronLog.functions);
 
@@ -95,15 +118,17 @@ global.RENDER_RUNNER_DONE = {};
 const ioServer = (global.SOCKET_SERVER = new require("socket.io")(server, {
   pingInterval: 10000,
   pingTimeout: 5000,
-  maxHttpBufferSize: 10000000000,
+  maxHttpBufferSize: SOCKET_MAX_HTTP_BUFFER_SIZE,
   allowEIO3: true, // 兼容 Socket.IO 2.x
   // 跨域问题(Socket.IO 3.x 使用这种方式)
   cors: {
-    // origin: "*",
     // 兼容 Socket.IO 2.x
     origin: (requestOrigin, callback) => {
-      // 允许所有域名连接
-      callback(null, requestOrigin);
+      if (isAllowedSocketOrigin(requestOrigin)) {
+        callback(null, requestOrigin || true);
+        return;
+      }
+      callback(new Error("CORS origin denied"));
     },
     methods: "GET, POST, PUT, DELETE, OPTIONS",
     allowedHeaders: "*",
@@ -114,6 +139,53 @@ const ioServer = (global.SOCKET_SERVER = new require("socket.io")(server, {
 
 // socket.io 客户端，用于连接中转服务
 const ioClient = require("socket.io-client").io;
+let localServicesStarted = false;
+let localSocketEventsInitialized = false;
+
+server.on("error", (error) => {
+  localServicesStarted = false;
+  console.error(`==> 本地服务启动失败: ${error.message}`);
+});
+
+function startLocalServices() {
+  if (localServicesStarted) return;
+  localServicesStarted = true;
+
+  if (!localSocketEventsInitialized) {
+    initServeEvent(ioServer);
+    localSocketEventsInitialized = true;
+  }
+
+  server.listen(
+    store.get("port") || 17521,
+    store.get("bindHost") || "127.0.0.1",
+    () => {
+      console.log(
+        `==> 本地服务监听 ${store.get("bindHost") || "127.0.0.1"}:${store.get(
+          "port",
+        ) || 17521} <==`,
+      );
+    },
+  );
+
+  if (
+    store.get("connectTransit") &&
+    store.get("transitUrl") &&
+    store.get("transitToken")
+  ) {
+    global.SOCKET_CLIENT = ioClient(store.get("transitUrl"), {
+      transports: ["websocket"],
+      query: {
+        client: "electron-hiprint",
+      },
+      auth: {
+        token: store.get("transitToken"),
+      },
+    });
+
+    initClientEvent();
+  }
+}
 
 /**
  * @description: 初始化
@@ -156,8 +228,12 @@ async function initialize() {
   // 获取设备ip、mac等信息
   ipcMain.on("getAddress", (event) => {
     address.all().then((obj) => {
+      const bindHost = store.get("bindHost") || "127.0.0.1";
+      const clientHost =
+        bindHost === "0.0.0.0" || bindHost === "::" ? obj.ip : bindHost;
       event.sender.send("address", {
         ...obj,
+        ip: clientHost,
         port: store.get("port"),
       });
     });
@@ -190,9 +266,9 @@ async function createWindow() {
     resizable: false, // 禁止窗口缩放
     show: false, // 初始隐藏
     webPreferences: {
-      // 设置此项为false后，才可在渲染进程中使用 electron api
-      contextIsolation: false,
-      nodeIntegration: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, "src/preload/index.js"),
     },
   };
 
@@ -252,29 +328,6 @@ async function createWindow() {
       if (!app.isPackaged) {
         MAIN_WINDOW.webContents.openDevTools();
       }
-      // 本地服务开启端口监听
-      server.listen(store.get("port") || 17521);
-      // 初始化本地 服务端事件
-      initServeEvent(ioServer);
-      // 有配置中转服务时连接中转服务
-      if (
-        store.get("connectTransit") &&
-        store.get("transitUrl") &&
-        store.get("transitToken")
-      ) {
-        global.SOCKET_CLIENT = ioClient(store.get("transitUrl"), {
-          transports: ["websocket"],
-          query: {
-            client: "electron-hiprint",
-          },
-          auth: {
-            token: store.get("transitToken"),
-          },
-        });
-
-        // 初始化中转 客户端事件
-        initClientEvent();
-      }
     } catch (error) {
       console.error(error);
     }
@@ -286,6 +339,8 @@ async function createWindow() {
   await printSetup();
   // 渲染窗口初始化
   await renderSetup();
+  // 本地服务初始化不依赖主窗口 DOM，避免页面加载失败导致服务不可用。
+  startLocalServices();
 
   return MAIN_WINDOW;
 }

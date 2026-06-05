@@ -142,11 +142,8 @@
       </el-form>
     </div>
     <script type="text/javascript">
-      const { ipcRenderer } = require("electron");
-      const Store = require("electron-store");
-      const store = new Store();
-
-      let ipc = ipcRenderer;
+      const ipc = window.hiprintSet;
+      const store = { store: ipc.store };
 
       new Vue({
         el: "#app",
@@ -661,11 +658,11 @@
         },
         methods: {
           onEvents() {
-            ipcRenderer.on("downloadedVersions", (event, versions) => {
+            ipc.on("downloadedVersions", (event, versions) => {
               this.downloadedVersions = versions;
               this.mergeDownloadedVersions();
             });
-            ipcRenderer.on("getPrintersList", (event, printers) => {
+            ipc.on("getPrintersList", (event, printers) => {
               this.printerList = printers;
             });
           },
@@ -873,7 +870,7 @@
            * @return {void}
            */
           getPrintersList() {
-            ipcRenderer.send("getPrintersList"); // 请求打印机列表
+            ipc.send("getPrintersList"); // 请求打印机列表
           },
         },
       });

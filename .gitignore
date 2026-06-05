@@ -13,10 +13,9 @@ yarn-error.log
 
 .babelrc
 .editorconfig
-package-lock.json
-
 run/
 out/
 .history/
+.omx/
 tools/database.sqlite
 /build-info.json

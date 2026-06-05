@@ -20,8 +20,9 @@ async function createPrintWindow() {
     height: 100, // 窗口高度
     show: false, // 不显示
     webPreferences: {
-      contextIsolation: false, // 设置此项为false后，才可在渲染进程中使用electron api
-      nodeIntegration: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, "preload/print.js"),
     },
     // 为窗口设置背景色可能优化字体模糊问题
     // https://www.electronjs.org/zh/docs/latest/faq#文字看起来很模糊这是什么原因造成的怎么解决这个问题呢

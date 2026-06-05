@@ -18,69 +18,78 @@
         -moz-osx-font-smoothing: grayscale;
       }
     </style>
-    <script>
-      window.$ = window.jQuery = require("jquery");
-      $.fn.onImgLoaded = (callback) => {
-        let cb = (len) => {
-          if (len <= 0) {
-            callback();
-          }
-        };
-        let len = $("img").length;
-        cb(len);
-        let getUrl = (str) => {
-          let reg = /(https?|http|ftp|file):\/\/[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]/g;
-          let v = str.match(reg);
-          if (v && v.length) {
-            return v[0];
-          }
-          return "";
-        };
-        $("img").each((i, e) => {
-          let $img = $(e);
-          let img = new Image();
-          let src = $img.attr("src");
-          if (!new RegExp("[a-zA-Z]+://[^\s]*").test(src)) {
-            src = getUrl($img.attr("style") || "");
-          }
-          img.src = src;
-          if (img.complete || src == "") {
-            len--;
-            cb(len);
-          } else {
-            img.onload = () => {
-              len--;
-              cb(len);
-            };
-            img.onerror = () => {
-              len--;
-              cb(len);
-            };
-          }
-        });
-      };
-    </script>
   </head>
 
   <body>
     <div id="printElement"></div>
     <script>
-      const { ipcRenderer } = require("electron");
+      const printApi = window.hiprintPrint;
 
-      $(document).ready(function() {
-        ipcRenderer.on("print-new", (event, data) => {
-          document.title = data.title ? data.title : "hiprint打印";
-          document.getElementById("printElement").innerHTML = data.html;
-          data.pageNum = $(".hiprint-printPaper").length;
-          $.fn.onImgLoaded(() => {
-            ipcRenderer.send("do", data);
+      function sanitizeNode(root) {
+        root.querySelectorAll("script").forEach((node) => node.remove());
+        root.querySelectorAll("*").forEach((node) => {
+          Array.from(node.attributes).forEach((attribute) => {
+            if (/^on/i.test(attribute.name)) {
+              node.removeAttribute(attribute.name);
+            }
           });
         });
-        ipcRenderer.on("reprint", (event, data) => {
+      }
+
+      function setPrintHtml(target, html) {
+        const template = document.createElement("template");
+        template.innerHTML = String(html || "");
+        sanitizeNode(template.content);
+        target.replaceChildren(...Array.from(template.content.childNodes));
+      }
+
+      function getUrl(str) {
+        const reg = /(https?|http|ftp|file):\/\/[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]/g;
+        const value = String(str || "").match(reg);
+        return value && value.length ? value[0] : "";
+      }
+
+      function waitForImages(callback) {
+        const images = Array.from(document.querySelectorAll("img"));
+        let remaining = images.length;
+        const done = () => {
+          remaining -= 1;
+          if (remaining <= 0) callback();
+        };
+        if (remaining <= 0) {
+          callback();
+          return;
+        }
+        images.forEach((element) => {
+          const image = new Image();
+          let src = element.getAttribute("src") || "";
+          if (!new RegExp("[a-zA-Z]+://[^\\s]*").test(src)) {
+            src = getUrl(element.getAttribute("style") || "");
+          }
+          image.src = src;
+          if (image.complete || src === "") {
+            done();
+          } else {
+            image.onload = done;
+            image.onerror = done;
+          }
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        printApi.onPrintNew((data) => {
           document.title = data.title ? data.title : "hiprint打印";
-          document.getElementById("printElement").innerHTML = data.html;
-          $.fn.onImgLoaded(() => {
-            ipcRenderer.send("do", data);
+          setPrintHtml(document.getElementById("printElement"), data.html);
+          data.pageNum = document.querySelectorAll(".hiprint-printPaper").length;
+          waitForImages(() => {
+            printApi.done(data);
+          });
+        });
+        printApi.onReprint((data) => {
+          document.title = data.title ? data.title : "hiprint打印";
+          setPrintHtml(document.getElementById("printElement"), data.html);
+          waitForImages(() => {
+            printApi.done(data);
           });
         });
       });

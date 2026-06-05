@@ -3,6 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 const childProcess = require("child_process");
+const net = require("net");
 const { app, Notification, dialog, clipboard, shell } = require("electron");
 const address = require("address");
 const ipp = require("ipp");
@@ -128,9 +129,27 @@ const schema = {
     minimum: 10000,
     default: 17521,
   },
-  token: {
+  bindHost: {
     type: "string",
-    default: "",
+    default: "127.0.0.1",
+  },
+  allowedOrigins: {
+    type: "array",
+    default: [],
+    items: {
+      type: "string",
+    },
+  },
+  allowedIppHosts: {
+    type: "array",
+    default: [],
+    items: {
+      type: "string",
+    },
+  },
+  token: {
+    type: ["string", "null"],
+    default: null,
   },
   pluginVersion: {
     type: "string",
@@ -197,6 +216,18 @@ const schema = {
 };
 
 const store = new Store({ schema });
+
+function generateAuthToken() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+function ensureAuthToken() {
+  const token = store.get("token");
+  if (typeof token === "string" && token.length > 0) return token;
+  const generatedToken = generateAuthToken();
+  store.set("token", generatedToken);
+  return generatedToken;
+}
 
 /**
  * @description: 获取当前系统 IP 地址
@@ -396,6 +427,89 @@ function getExportCapability() {
   };
 }
 
+function normalizeHost(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\[/, "")
+    .replace(/\]$/, "");
+}
+
+function getAllowedIppHosts() {
+  const configured = store.get("allowedIppHosts");
+  return Array.isArray(configured)
+    ? configured.map(normalizeHost).filter(Boolean)
+    : [];
+}
+
+function isBlockedIPv4(hostname) {
+  const parts = hostname.split(".").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
+    return false;
+  }
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    a >= 224
+  );
+}
+
+function isBlockedIPv6(hostname) {
+  const normalized = normalizeHost(hostname);
+  return (
+    normalized === "::" ||
+    normalized === "::1" ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    normalized.startsWith("fe80:")
+  );
+}
+
+function getIppTargetError(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return createIppTargetError("IPP URL 格式无效");
+  }
+
+  if (!["http:", "https:", "ipp:", "ipps:"].includes(parsed.protocol)) {
+    return createIppTargetError("IPP URL 协议不被允许");
+  }
+
+  const hostname = normalizeHost(parsed.hostname);
+  const allowedHosts = getAllowedIppHosts();
+  if (allowedHosts.includes("*") || allowedHosts.includes(hostname)) {
+    return null;
+  }
+
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+    return createIppTargetError("IPP URL 不能指向本机地址");
+  }
+
+  const ipVersion = net.isIP(hostname);
+  if (ipVersion === 4 && isBlockedIPv4(hostname)) {
+    return createIppTargetError("IPP URL 不能指向内网或保留 IPv4 地址");
+  }
+  if (ipVersion === 6 && isBlockedIPv6(hostname)) {
+    return createIppTargetError("IPP URL 不能指向内网或保留 IPv6 地址");
+  }
+
+  return null;
+}
+
+function createIppTargetError(message) {
+  const error = new Error(message);
+  error.name = "InvalidIppTarget";
+  return error;
+}
+
 function normalizeExtension(value) {
   const text = String(value || "").trim().toLowerCase();
   if (!text) return "";
@@ -555,6 +669,9 @@ function handleFileExportTask(client, task) {
 function emitClientInfo(socket) {
   _address.mac().then((mac) => {
     const defaultPrinter = store.get("defaultPrinter", "");
+    const bindHost = store.get("bindHost") || "127.0.0.1";
+    const clientHost =
+      bindHost === "0.0.0.0" || bindHost === "::" ? _address.ip() : bindHost;
     socket.emit("clientInfo", {
       hostname: os.hostname(), // 主机名
       version: app.getVersion(), // 版本号
@@ -563,7 +680,7 @@ function emitClientInfo(socket) {
       mac: mac, // mac 地址
       ip: _address.ip(), // ip 地址
       ipv6: _address.ipv6(), // ipv6 地址
-      clientUrl: `http://${_address.ip()}:${store.get("port") || 17521}`, // 客户端地址
+      clientUrl: `http://${clientHost}:${store.get("port") || 17521}`, // 客户端地址
       machineId: getMachineId(), // 客户端唯一id
       nickName: store.get("nickName"), // 客户端昵称
       defaultPrinter, // 客户端高级设置里的默认打印机
@@ -704,10 +821,12 @@ function initServeEvent(server) {
    * @description: 校验 token
    */
   server.use((socket, next) => {
-    const token = store.get("token");
-    if (token && token !== socket.handshake.auth.token) {
+    const token = ensureAuthToken();
+    const auth = socket.handshake && socket.handshake.auth;
+    const providedToken = auth && auth.token;
+    if (!providedToken || token !== providedToken) {
       console.log(
-        `==> 插件端 Authentication error: ${socket.id}, token: ${socket.handshake.auth.token}`,
+        `==> 插件端 Authentication error: ${socket.id}, token: ${providedToken}`,
       );
       const err = new Error("Authentication error");
       err.data = {
@@ -827,6 +946,14 @@ function initServeEvent(server) {
       console.log(`插件端 ${socket.id}: ippPrint`);
       try {
         const { url, opt, action, message } = options;
+        const targetError = getIppTargetError(url);
+        if (targetError) {
+          socket.emit("ippPrinterCallback", {
+            type: targetError.name,
+            msg: targetError.message,
+          });
+          return;
+        }
         let printer = ipp.Printer(url, opt);
         socket.emit("ippPrinterConnected", printer);
         let msg = Object.assign(
@@ -873,6 +1000,14 @@ function initServeEvent(server) {
       console.log(`插件端 ${socket.id}: ippRequest`);
       try {
         const { url, data } = options;
+        const targetError = getIppTargetError(url);
+        if (targetError) {
+          socket.emit("ippRequestCallback", {
+            type: targetError.name,
+            msg: targetError.message,
+          });
+          return;
+        }
         let _data = ipp.serialize(data);
         ipp.request(url, _data, (err, res) => {
           socket.emit(
@@ -1076,6 +1211,15 @@ function initClientEvent() {
     console.log(`中转服务 ${client.id}: ippPrint`);
     try {
       const { url, opt, action, message, replyId } = options;
+      const targetError = getIppTargetError(url);
+      if (targetError) {
+        client.emit("ippPrinterCallback", {
+          type: targetError.name,
+          msg: targetError.message,
+          replyId,
+        });
+        return;
+      }
       let printer = ipp.Printer(url, opt);
       client.emit("ippPrinterConnected", { printer, replyId });
       let msg = Object.assign(
@@ -1123,6 +1267,15 @@ function initClientEvent() {
     console.log(`中转服务 ${client.id}: ippRequest`);
     try {
       const { url, data, replyId } = options;
+      const targetError = getIppTargetError(url);
+      if (targetError) {
+        client.emit("ippRequestCallback", {
+          type: targetError.name,
+          msg: targetError.message,
+          replyId,
+        });
+        return;
+      }
       let _data = ipp.serialize(data);
       ipp.request(url, _data, (err, res) => {
         client.emit(

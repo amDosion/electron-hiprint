@@ -74,15 +74,8 @@
       </div>
     </div>
     <script type="text/javascript">
-      const { ipcRenderer, clipboard } = require("electron");
-      const Store = require("electron-store");
-      const store = new Store();
-
-      const { version } = require("../package.json");
-
-      document.title = store.get("mainTitle") || "Electron-hiprint";
-
-      let ipc = ipcRenderer;
+      const ipc = window.hiprintIndex;
+      document.title = ipc.title;
       new Vue({
         el: "#app",
         data: () => {
@@ -93,9 +86,9 @@
             transitActiveFlag: false,
             socketActiveNum: 0,
             printing: false,
-            pluginVersion: store.get("pluginVersion") || "未指定",
+            pluginVersion: ipc.pluginVersion,
             displayPrivate: true,
-            version,
+            version: ipc.version,
           };
         },
         created() {
@@ -122,7 +115,7 @@
             this.displayPrivate = !this.displayPrivate;
           },
           handleCopy(event) {
-            clipboard.writeText(this[event.target.dataset.prop]);
+            ipc.writeText(this[event.target.dataset.prop]);
             ipc.send("notification", {
               title: "复制成功",
               body: "文本已成功复制到剪贴板中！",

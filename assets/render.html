@@ -19,37 +19,21 @@
 
   <body>
     <div id="printElement"></div>
+    <script src="../node_modules/jquery/dist/jquery.min.js"></script>
+    <script src="../node_modules/nzh/dist/nzh.min.js"></script>
+    <script src="../node_modules/bwip-js/dist/bwip-js.js"></script>
+    <script src="../node_modules/jsbarcode/dist/JsBarcode.all.min.js"></script>
     <script>
-      const { ipcRenderer } = require("electron");
-      const Store = require("electron-store");
-      const path = require("path");
-      const fs = require("fs");
-
-      const store = new Store();
-
-      window.$ = window.jQuery = require("jquery");
+      const ipc = window.hiprintRender;
       window.autoConnect = false;
-
-      window.Nzh = require("nzh");
-
-      window["bwip-js"] = require("bwip-js");
-
-      window.JsBarcode = require("jsbarcode");
-
+      window["bwip-js"] = window.bwipjs;
       window.template = undefined;
-
       window.io = () => {};
 
       // 用于判断是否为打包版本
       const isPackaged = location.href.includes("app.asar");
-      // 用于判断当前系统
-      const platform = process.platform;
-      const pluginVersion = store.get("pluginVersion");
+      const pluginVersion = ipc.pluginVersion;
       const pluginBaseUrl = isPackaged ? "../../plugin" : "../plugin";
-      const pluginDir = path.resolve(
-        __dirname,
-        isPackaged ? "../../plugin" : "../plugin",
-      );
 
       // 获取模板json. string或者json 统一处理
       const getTemplateJson = (val) => {
@@ -66,7 +50,7 @@
           }
           return template;
         } catch (error) {
-          ipcRenderer.send("showMessageBox", {
+          ipc.send("showMessageBox", {
             title: "模板格式错误",
             message: `请传入正确的模板json`,
             type: "error",
@@ -74,6 +58,39 @@
           });
         }
       };
+
+      function sanitizeNode(root) {
+        root.querySelectorAll("script").forEach((node) => node.remove());
+        root.querySelectorAll("*").forEach((node) => {
+          Array.from(node.attributes).forEach((attribute) => {
+            if (/^on/i.test(attribute.name)) {
+              node.removeAttribute(attribute.name);
+            }
+          });
+        });
+      }
+
+      function normalizeHtmlContent(html) {
+        if (html && html.jquery) {
+          return Array.from(html).map((node) => node.outerHTML || "").join("");
+        }
+        if (Array.isArray(html)) {
+          return html.map((item) => normalizeHtmlContent(item)).join("");
+        }
+        if (html && html.outerHTML) {
+          return html.outerHTML;
+        }
+        return String(html || "");
+      }
+
+      function setPrintElementContent(html) {
+        const template = document.createElement("template");
+        template.innerHTML = normalizeHtmlContent(html);
+        sanitizeNode(template.content);
+        const printElement = document.getElementById("printElement");
+        printElement.replaceChildren(...Array.from(template.content.childNodes));
+        return printElement;
+      }
 
       $(document).ready(function() {
         const script = document.createElement("script");
@@ -87,7 +104,7 @@
           const pluginGlobal =
             window["vue-plugin-hiprint"] || window.VuePluginHiprint;
           if (!pluginGlobal || !pluginGlobal.hiprint) {
-            ipcRenderer.send("showMessageBox", {
+            ipc.send("showMessageBox", {
               title: "插件加载错误",
               message: `【${pluginVersion}】版本未暴露 hiprint，请重新在设置中指定版本！`,
               type: "error",
@@ -97,7 +114,7 @@
           }
           hiprint = pluginGlobal.hiprint;
 
-          ipcRenderer.on("png", (event, data) => {
+          ipc.on("png", (data) => {
             // 滚动窗口滚动条到左上角
             window.scrollTo(0, 0);
             let html = data.html;
@@ -107,8 +124,7 @@
               });
               html = window.template.getHtml(data.data);
             }
-            const printElement = $("#printElement");
-            printElement.html(html);
+            const printElement = $(setPrintElementContent(html));
             const rects = Array.from(
               printElement.find(".hiprint-printPaper"),
             ).map((el) => el.getBoundingClientRect());
@@ -121,11 +137,11 @@
               height: rects.pop().bottom,
             };
             setTimeout(() => {
-              ipcRenderer.send("capturePage", capturePageData);
+              ipc.send("capturePage", capturePageData);
             });
           });
 
-          ipcRenderer.on("pdf", (event, data) => {
+          ipc.on("pdf", (data) => {
             let html = data.html;
             if (data.template) {
               let template = getTemplateJson(data.template);
@@ -134,16 +150,16 @@
               });
               html = window.template.getHtml(data.data);
             }
-            $("#printElement").html(html);
+            setPrintElementContent(html);
             setTimeout(() => {
-              ipcRenderer.send("printToPDF", {
+              ipc.send("printToPDF", {
                 ...data,
                 templateId: data.templateId || template.id,
               });
             });
           });
 
-          ipcRenderer.on("print", (event, data) => {
+          ipc.on("print", (data) => {
             let html = data.html;
             if (data.template) {
               let template = getTemplateJson(data.template);
@@ -152,11 +168,13 @@
               });
               html = window.template.getHtml(data.data);
             }
-            $("#printElement").html(html);
+            const printElement = setPrintElementContent(html);
             setTimeout(() => {
-              ipcRenderer.send("print", {
+              ipc.send("print", {
                 ...data,
-                html: html[0].innerHTML,
+                html: printElement.firstElementChild
+                  ? printElement.firstElementChild.innerHTML
+                  : printElement.innerHTML,
                 templateId: data.templateId || template.id,
                 pageNum: $("#printElement .hiprint-printPaper").length,
               });
@@ -164,7 +182,7 @@
           });
         };
         script.onerror = () => {
-          ipcRenderer.send("showMessageBox", {
+          ipc.send("showMessageBox", {
             title: "插件加载错误",
             message: `无法从插件缓存中加载【${pluginVersion}】版本，请重新在设置中指定版本！`,
             type: "error",
@@ -175,13 +193,11 @@
         const head = document.querySelector("head");
 
         const styleFile = `${pluginVersion}_style.css`;
-        if (fs.existsSync(path.join(pluginDir, styleFile))) {
-          head.append(
-            $(
-              `<link rel="stylesheet" type="text/css" href="${pluginBaseUrl}/${styleFile}">`,
-            )[0],
-          );
-        }
+        head.append(
+          $(
+            `<link rel="stylesheet" type="text/css" href="${pluginBaseUrl}/${styleFile}">`,
+          )[0],
+        );
 
         const cssSrc = `${pluginBaseUrl}/${pluginVersion}_print-lock.css`;
 

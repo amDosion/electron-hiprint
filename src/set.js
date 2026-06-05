@@ -17,6 +17,8 @@ const {
 const path = require("path");
 const https = require("node:https");
 const fs = require("node:fs");
+const crypto = require("node:crypto");
+const zlib = require("node:zlib");
 const { store } = require("../tools/utils");
 
 /**
@@ -33,8 +35,9 @@ async function createSetWindow() {
     alwaysOnTop: true, // 永远置顶
     resizable: false, // 不可缩放
     webPreferences: {
-      contextIsolation: false, // 设置此项为false后，才可在渲染进程中使用 electron api
-      nodeIntegration: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, "preload/set.js"),
     },
   };
 
@@ -175,35 +178,7 @@ function setConfig(event, data) {
  */
 function downloadPlugin(event, data) {
   const fileList = ["vue-plugin-hiprint.js", "print-lock.css"];
-  Promise.all(
-    fileList.map((url) => {
-      return new Promise((resolve, reject) => {
-        https.get(
-          `https://registry.npmmirror.com/vue-plugin-hiprint/${data}/files/dist/${url}`,
-          (res) => {
-            let filePath = "";
-            if (app.isPackaged) {
-              filePath = path.join(
-                app.getAppPath(),
-                "../",
-                `plugin/${data}_${url}`,
-              );
-            } else {
-              filePath = path.join(app.getAppPath(), `plugin/${data}_${url}`);
-            }
-            const fileStream = fs.createWriteStream(filePath);
-            res.pipe(fileStream);
-            res.on("end", () => {
-              resolve();
-            });
-            res.on("error", () => {
-              reject();
-            });
-          },
-        );
-      });
-    }),
-  )
+  downloadPluginFiles(data, fileList)
     .then(() => {
       dialog.showMessageBox(SET_WINDOW, {
         type: "info",
@@ -224,6 +199,104 @@ function downloadPlugin(event, data) {
         noLink: true,
       });
     });
+}
+
+function httpsGetBuffer(url, redirects = 0) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, (res) => {
+      if (
+        res.statusCode >= 300 &&
+        res.statusCode < 400 &&
+        res.headers.location &&
+        redirects < 3
+      ) {
+        res.resume();
+        const redirectedUrl = new URL(res.headers.location, url).href;
+        httpsGetBuffer(redirectedUrl, redirects + 1).then(resolve, reject);
+        return;
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`下载失败，HTTP ${res.statusCode}`));
+        return;
+      }
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => resolve(Buffer.concat(chunks)));
+    });
+    request.on("error", reject);
+    request.setTimeout(30000, () => {
+      request.destroy(new Error("下载超时"));
+    });
+  });
+}
+
+async function downloadPluginFiles(version, fileList) {
+  const metadataBuffer = await httpsGetBuffer(
+    `https://registry.npmmirror.com/vue-plugin-hiprint/${version}`,
+  );
+  const metadata = JSON.parse(metadataBuffer.toString("utf8"));
+  const tarballUrl = metadata.dist && metadata.dist.tarball;
+  const integrity = metadata.dist && metadata.dist.integrity;
+  if (!tarballUrl || !integrity) {
+    throw new Error("插件元数据缺少 tarball 或 integrity");
+  }
+
+  const tarballBuffer = await httpsGetBuffer(tarballUrl);
+  verifyNpmIntegrity(tarballBuffer, integrity);
+  const extractedFiles = extractDistFilesFromTarball(tarballBuffer, fileList);
+  const pluginDir = app.isPackaged
+    ? path.join(app.getAppPath(), "../", "plugin")
+    : path.join(app.getAppPath(), "plugin");
+  fs.mkdirSync(pluginDir, { recursive: true });
+  fileList.forEach((fileName) => {
+    const content = extractedFiles[fileName];
+    if (!content) {
+      throw new Error(`插件包缺少 dist/${fileName}`);
+    }
+    const filePath = path.join(pluginDir, `${version}_${fileName}`);
+    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tempPath, content, { flag: "wx" });
+    fs.renameSync(tempPath, filePath);
+  });
+}
+
+function verifyNpmIntegrity(buffer, integrity) {
+  const [algorithm, expected] = String(integrity).split("-", 2);
+  if (!["sha512", "sha384", "sha256"].includes(algorithm) || !expected) {
+    throw new Error("插件 integrity 格式不受支持");
+  }
+  const actual = crypto.createHash(algorithm).update(buffer).digest("base64");
+  if (actual !== expected) {
+    throw new Error("插件包完整性校验失败");
+  }
+}
+
+function extractDistFilesFromTarball(tarballBuffer, fileList) {
+  const tarBuffer = zlib.gunzipSync(tarballBuffer);
+  const wanted = new Set(fileList.map((fileName) => `package/dist/${fileName}`));
+  const extracted = {};
+  let offset = 0;
+  while (offset + 512 <= tarBuffer.length) {
+    const name = tarBuffer
+      .toString("utf8", offset, offset + 100)
+      .replace(/\0.*$/, "");
+    if (!name) break;
+    const sizeText = tarBuffer
+      .toString("utf8", offset + 124, offset + 136)
+      .replace(/\0.*$/, "")
+      .trim();
+    const size = parseInt(sizeText, 8) || 0;
+    const dataStart = offset + 512;
+    const dataEnd = dataStart + size;
+    if (wanted.has(name)) {
+      extracted[path.basename(name)] = Buffer.from(
+        tarBuffer.subarray(dataStart, dataEnd),
+      );
+    }
+    offset = dataStart + Math.ceil(size / 512) * 512;
+  }
+  return extracted;
 }
 
 /**
