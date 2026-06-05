@@ -12,9 +12,15 @@ const sendChannels = new Set([
   "testTransit",
   "closeSetWindow",
   "downloadPlugin",
+  "checkOnlineUpgrade",
   "getPrintersList",
 ]);
-const onChannels = new Set(["downloadedVersions", "getPrintersList", "openDialog"]);
+const onChannels = new Set([
+  "downloadedVersions",
+  "getPrintersList",
+  "onlineUpdateStatus",
+  "openDialog",
+]);
 
 contextBridge.exposeInMainWorld("hiprintSet", {
   store: store.store,

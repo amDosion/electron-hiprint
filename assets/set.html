@@ -210,6 +210,7 @@
             ],
             downloadedVersions: [], // 存储已下载版本
             printerList: [], // 打印机列表
+            onlineUpgradeBusy: false,
           };
         },
         computed: {
@@ -606,6 +607,24 @@
                   display: this.setTab === "advancedSet",
                 },
                 {
+                  label: "客户端在线升级",
+                  is: "el-button",
+                  tips: "从 GitHub Release 下载最新安装包，校验通过后启动升级",
+                  attrs: {
+                    type: "primary",
+                    icon: "el-icon-upload2",
+                    loading: this.onlineUpgradeBusy,
+                    disabled: this.onlineUpgradeBusy,
+                  },
+                  event: {
+                    click: this.checkOnlineUpgrade,
+                  },
+                  content: this.onlineUpgradeBusy
+                    ? "升级处理中..."
+                    : "检查并在线升级",
+                  display: this.setTab === "advancedSet",
+                },
+                {
                   label: "关闭主窗口动作",
                   prop: "closeType",
                   is: "el-radio-group",
@@ -655,6 +674,7 @@
         },
         beforeDestroy() {
           ipc.removeAllListeners("openDialog");
+          ipc.removeAllListeners("onlineUpdateStatus");
         },
         methods: {
           onEvents() {
@@ -664,6 +684,9 @@
             });
             ipc.on("getPrintersList", (event, printers) => {
               this.printerList = printers;
+            });
+            ipc.on("onlineUpdateStatus", (event, status) => {
+              this.onlineUpgradeBusy = status && status.busy === true;
             });
           },
           handleTabChange() {
@@ -871,6 +894,11 @@
            */
           getPrintersList() {
             ipc.send("getPrintersList"); // 请求打印机列表
+          },
+          checkOnlineUpgrade() {
+            if (!this.onlineUpgradeBusy) {
+              ipc.send("checkOnlineUpgrade");
+            }
           },
         },
       });

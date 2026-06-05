@@ -15,11 +15,23 @@ const {
   shell,
 } = require("electron");
 const path = require("path");
+const childProcess = require("node:child_process");
 const https = require("node:https");
 const fs = require("node:fs");
 const crypto = require("node:crypto");
 const zlib = require("node:zlib");
 const { store } = require("../tools/utils");
+const helper = require("./helper");
+const {
+  GITHUB_LATEST_RELEASE_URL,
+  compareVersions,
+  downloadVerifiedAsset,
+  getLatestGithubRelease,
+  getReleaseVersion,
+  selectReleaseAsset,
+} = require("./online-update");
+
+let onlineUpgradeInProgress = false;
 
 /**
  * @description: 创建设置窗口
@@ -199,6 +211,143 @@ function downloadPlugin(event, data) {
         noLink: true,
       });
     });
+}
+
+function sendOnlineUpdateStatus(status) {
+  if (SET_WINDOW && !SET_WINDOW.isDestroyed()) {
+    SET_WINDOW.webContents.send("onlineUpdateStatus", status);
+  }
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(Number(bytes)) || Number(bytes) <= 0) return "未知大小";
+  return `${(Number(bytes) / 1048576).toFixed(1)} MB`;
+}
+
+function launchInstaller(filePath) {
+  return new Promise((resolve, reject) => {
+    const installer = childProcess.spawn(filePath, ["/S"], {
+      detached: true,
+      stdio: "ignore",
+    });
+    installer.once("error", reject);
+    installer.once("spawn", () => {
+      installer.unref();
+      resolve();
+    });
+  });
+}
+
+async function checkOnlineUpgrade() {
+  if (onlineUpgradeInProgress) return;
+  onlineUpgradeInProgress = true;
+  let installerLaunched = false;
+  sendOnlineUpdateStatus({
+    busy: true,
+    state: "checking",
+    message: "正在检查客户端更新...",
+  });
+
+  try {
+    if (!app.isPackaged) {
+      await dialog.showMessageBox(SET_WINDOW, {
+        type: "info",
+        title: "提示",
+        message: "开发环境不执行在线升级，请使用安装后的客户端验证。",
+        buttons: ["确定"],
+        noLink: true,
+      });
+      return;
+    }
+
+    const release = await getLatestGithubRelease();
+    const latestVersion = getReleaseVersion(release);
+    if (!latestVersion) {
+      throw new Error("GitHub Release 缺少有效版本号");
+    }
+
+    const currentVersion = app.getVersion();
+    if (compareVersions(latestVersion, currentVersion) <= 0) {
+      await dialog.showMessageBox(SET_WINDOW, {
+        type: "info",
+        title: "提示",
+        message: `当前已是最新版本：${currentVersion}`,
+        buttons: ["确定"],
+        noLink: true,
+      });
+      return;
+    }
+
+    const asset = selectReleaseAsset(release, process.platform, process.arch);
+    const confirmResult = await dialog.showMessageBox(SET_WINDOW, {
+      type: "question",
+      title: "发现新版本",
+      message: `发现新版本 ${latestVersion}，是否下载并升级？`,
+      detail: [
+        `当前版本：${currentVersion}`,
+        `安装包：${asset.name}`,
+        `大小：${formatBytes(asset.size)}`,
+        `来源：${GITHUB_LATEST_RELEASE_URL}`,
+      ].join("\n"),
+      buttons: ["下载并升级", "取消"],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (confirmResult.response !== 0) {
+      return;
+    }
+
+    const downloadPath = path.join(app.getPath("temp"), asset.name);
+    sendOnlineUpdateStatus({
+      busy: true,
+      state: "downloading",
+      message: `正在下载 ${latestVersion}...`,
+    });
+    const downloaded = await downloadVerifiedAsset(asset, downloadPath, {
+      onProgress: ({ bytes, totalBytes }) => {
+        sendOnlineUpdateStatus({
+          busy: true,
+          state: "downloading",
+          message: `正在下载 ${formatBytes(bytes)} / ${formatBytes(totalBytes)}`,
+        });
+      },
+    });
+
+    sendOnlineUpdateStatus({
+      busy: true,
+      state: "installing",
+      message: "安装包校验通过，正在启动升级...",
+    });
+    await launchInstaller(downloaded.filePath);
+    installerLaunched = true;
+    setTimeout(() => {
+      helper.appQuit();
+    }, 500);
+  } catch (error) {
+    console.error("在线升级失败:", error);
+    sendOnlineUpdateStatus({
+      busy: false,
+      state: "error",
+      message: error.message,
+    });
+    await dialog.showMessageBox(SET_WINDOW, {
+      type: "error",
+      title: "提示",
+      message: `在线升级失败：${error.message}`,
+      buttons: ["确定"],
+      noLink: true,
+    });
+  } finally {
+    onlineUpgradeInProgress = false;
+    if (!installerLaunched) {
+      sendOnlineUpdateStatus({
+        busy: false,
+        state: "idle",
+        message: "",
+      });
+    }
+  }
 }
 
 function httpsGetBuffer(url, redirects = 0) {
@@ -437,6 +586,7 @@ function initSetEvent() {
   ipcMain.on("testTransit", testTransit);
   ipcMain.on("closeSetWindow", closeSetWindow);
   ipcMain.on("downloadPlugin", downloadPlugin);
+  ipcMain.on("checkOnlineUpgrade", checkOnlineUpgrade);
   ipcMain.on("getPrintersList", getPrintersList);
 }
 
@@ -453,6 +603,7 @@ function removeEvent() {
   ipcMain.removeListener("testTransit", testTransit);
   ipcMain.removeListener("closeSetWindow", closeSetWindow);
   ipcMain.removeListener("downloadPlugin", downloadPlugin);
+  ipcMain.removeListener("checkOnlineUpgrade", checkOnlineUpgrade);
   ipcMain.removeListener("getPrintersList", getPrintersList);
   SET_WINDOW = null;
 }
