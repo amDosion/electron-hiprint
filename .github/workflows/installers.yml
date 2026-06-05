@@ -1,0 +1,108 @@
+name: Installer Artifacts
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master, main, "codex/**"]
+    paths-ignore:
+      - "docs/**"
+      - ".omx/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "${{ github.workflow }} - ${{ github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.artifact }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: build-w-64
+            artifact: win_x64
+          - os: windows-latest
+            script: build-w
+            artifact: win_x32
+          - os: macos-15
+            script: build-m-arm64
+            artifact: mac_arm64
+          - os: macos-15-intel
+            script: build-m
+            artifact: mac_x64
+          - os: macos-15
+            script: build-m-universal
+            artifact: mac_universal
+          - os: ubuntu-latest
+            script: build-l
+            artifact: linux_64
+          - os: ubuntu-latest
+            script: build-l-arm64
+            artifact: linux_arm64
+          - os: ubuntu-latest
+            script: build-kylin
+            artifact: Kylin_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Setup macOS node-gyp Python
+        if: runner.os == 'macOS'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installer
+        run: npm run ${{ matrix.script }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify installer outputs
+        shell: pwsh
+        run: |
+          $artifact = "${{ matrix.artifact }}"
+          $prefix = "hiprint_$artifact-"
+          $files = Get-ChildItem -Path out -File | Where-Object { $_.Name.StartsWith($prefix) }
+          if ($files.Count -eq 0) {
+            throw "No installer files found for $artifact"
+          }
+          if ($artifact.StartsWith("win_")) {
+            if (-not ($files | Where-Object { $_.Name.EndsWith(".exe") })) { throw "Missing Windows exe for $artifact" }
+            if (-not ($files | Where-Object { $_.Name.EndsWith(".exe.blockmap") })) { throw "Missing Windows blockmap for $artifact" }
+          } elseif ($artifact.StartsWith("mac_")) {
+            if (-not ($files | Where-Object { $_.Name.EndsWith(".dmg") })) { throw "Missing macOS dmg for $artifact" }
+          } else {
+            if (-not ($files | Where-Object { $_.Name.EndsWith(".tar.xz") })) { throw "Missing Linux tar.xz for $artifact" }
+            if (-not ($files | Where-Object { $_.Name.EndsWith(".deb") })) { throw "Missing Linux deb for $artifact" }
+          }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: hiprint-${{ matrix.artifact }}
+          path: |
+            out/hiprint_${{ matrix.artifact }}-*.exe
+            out/hiprint_${{ matrix.artifact }}-*.exe.blockmap
+            out/hiprint_${{ matrix.artifact }}-*.dmg
+            out/hiprint_${{ matrix.artifact }}-*.tar.xz
+            out/hiprint_${{ matrix.artifact }}-*.deb
+          if-no-files-found: error
+          retention-days: 14

@@ -29,6 +29,9 @@ function main() {
   const utils = read("tools/utils.js");
   const mainProcess = read("main.js");
   const packageJson = read("package.json");
+  const buildPackage = exists("tools/build-package.js")
+    ? read("tools/build-package.js")
+    : "";
   const pluginPackageExists = exists("src/plugin-package.js");
   const pluginPackage = pluginPackageExists ? read("src/plugin-package.js") : "";
   const pluginSyncExists = exists("src/plugin-sync.js");
@@ -112,7 +115,8 @@ function main() {
       buildSync.includes("PLUGIN_PACKAGE_METADATA_URL") &&
       buildSync.includes("verifyNpmIntegrity") &&
       packageJson.includes('"sync-plugin"') &&
-      packageJson.includes("npm run sync-plugin && electron-builder"),
+      buildPackage.includes("sync-builtin-plugin.js") &&
+      buildPackage.includes("run-electron-builder.js"),
     "packaging should prefetch npm latest into plugin/ so the installer carries the current built-in plugin.",
   );
 

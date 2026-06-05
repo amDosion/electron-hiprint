@@ -31,7 +31,7 @@ class ReName {
     let version = pkg.version;
     let productName = pkg.build.productName;
     let fileName = `${productName}-${version}`;
-    let extList = [".exe", ".dmg", ".tar.xz", ".deb"];
+    let extList = [".exe", ".exe.blockmap", ".dmg", ".tar.xz", ".deb"];
     extList.forEach((e) => {
       let file = path.join(that.dirs, `${fileName}${e}`);
       let nFile = path.join(

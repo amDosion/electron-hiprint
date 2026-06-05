@@ -5,10 +5,11 @@ env:
 
 on:
   push:
-    # 仅匹配 1.2.3 或 1.2.3-beta1 这样的 tag，例如 1.0.0、2.3.4-beta2
+    # GitHub Actions tag patterns are globs, not regular expressions.
+    # check-version below performs the strict package.json/tag equality check.
     tags:
-      - "[0-9]+.[0-9]+.[0-9]+"
-      - "[0-9]+.[0-9]+.[0-9]+-beta[0-9]+"
+      - "[0-9]*.[0-9]*.[0-9]*"
+      - "[0-9]*.[0-9]*.[0-9]*-beta[0-9]*"
 
 permissions: write-all
 
@@ -43,25 +44,28 @@ jobs:
         include:
           - os: windows-latest
             script: build-w-64
-            name-suffix: win_x64
+            artifact: win_x64
           - os: windows-latest
             script: build-w
-            name-suffix: win_ia32
-          - os: macos-latest
+            artifact: win_x32
+          - os: macos-15
             script: build-m-arm64
-            name-suffix: mac_arm64
-          - os: macos-latest
+            artifact: mac_arm64
+          - os: macos-15-intel
             script: build-m
-            name-suffix: mac_x64
-          - os: macos-latest
+            artifact: mac_x64
+          - os: macos-15
             script: build-m-universal
-            name-suffix: mac_universal
+            artifact: mac_universal
           - os: ubuntu-latest
             script: build-l
-            name-suffix: linux_x64
+            artifact: linux_64
           - os: ubuntu-latest
             script: build-l-arm64
-            name-suffix: linux_arm64
+            artifact: linux_arm64
+          - os: ubuntu-latest
+            script: build-kylin
+            artifact: Kylin_64
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -71,7 +75,8 @@ jobs:
       - name: 设置 Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "18"
+          node-version: "24"
+          cache: npm
 
       - name: 设置 macOS node-gyp Python
         if: runner.os == 'macOS'
@@ -79,28 +84,44 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: 安装依赖 (macOS)
-        if: runner.os == 'macOS'
-        run: npm_config_python="$(python3 -c 'import sys; print(sys.executable)')" npm install
-
       - name: 安装依赖
-        if: runner.os != 'macOS'
-        run: npm install
+        run: npm ci
 
-      - name: 打包 ${{ matrix.name-suffix }}
+      - name: 打包 ${{ matrix.artifact }}
         run: npm run ${{ matrix.script }}
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 校验安装包产物
+        shell: pwsh
+        run: |
+          $artifact = "${{ matrix.artifact }}"
+          $prefix = "hiprint_$artifact-"
+          $files = Get-ChildItem -Path out -File | Where-Object { $_.Name.StartsWith($prefix) }
+          if ($files.Count -eq 0) {
+            throw "No installer files found for $artifact"
+          }
+          if ($artifact.StartsWith("win_")) {
+            if (-not ($files | Where-Object { $_.Name.EndsWith(".exe") })) { throw "Missing Windows exe for $artifact" }
+            if (-not ($files | Where-Object { $_.Name.EndsWith(".exe.blockmap") })) { throw "Missing Windows blockmap for $artifact" }
+          } elseif ($artifact.StartsWith("mac_")) {
+            if (-not ($files | Where-Object { $_.Name.EndsWith(".dmg") })) { throw "Missing macOS dmg for $artifact" }
+          } else {
+            if (-not ($files | Where-Object { $_.Name.EndsWith(".tar.xz") })) { throw "Missing Linux tar.xz for $artifact" }
+            if (-not ($files | Where-Object { $_.Name.EndsWith(".deb") })) { throw "Missing Linux deb for $artifact" }
+          }
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.name-suffix }}
+          name: ${{ matrix.artifact }}
           path: |
-            out/*.exe
-            out/*.dmg
-            out/*.tar.xz
-            out/*.deb
+            out/hiprint_${{ matrix.artifact }}-*.exe
+            out/hiprint_${{ matrix.artifact }}-*.exe.blockmap
+            out/hiprint_${{ matrix.artifact }}-*.dmg
+            out/hiprint_${{ matrix.artifact }}-*.tar.xz
+            out/hiprint_${{ matrix.artifact }}-*.deb
+          if-no-files-found: error
           retention-days: 7
 
   release:
@@ -120,7 +141,7 @@ jobs:
       - name: 下载 win32 产物
         uses: actions/download-artifact@v6
         with:
-          name: win_ia32
+          name: win_x32
           path: artifacts/win
 
       - name: 下载 mac ARM64 产物
@@ -144,13 +165,19 @@ jobs:
       - name: 下载 linux x64 产物
         uses: actions/download-artifact@v6
         with:
-          name: linux_x64
+          name: linux_64
           path: artifacts/linux
 
       - name: 下载 linux ARM64 产物
         uses: actions/download-artifact@v6
         with:
           name: linux_arm64
+          path: artifacts/linux
+
+      - name: 下载 Kylin 产物
+        uses: actions/download-artifact@v6
+        with:
+          name: Kylin_64
           path: artifacts/linux
 
       - name: 发布 Release
