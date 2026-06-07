@@ -48,7 +48,7 @@ function launchInstaller(filePath) {
 }
 
 async function runOnlineUpgrade(options = {}) {
-  const { parentWindow, onStatus } = options;
+  const { parentWindow, onStatus, silent = false } = options;
   if (onlineUpgradeInProgress) return { skipped: true, reason: "busy" };
   onlineUpgradeInProgress = true;
   let installerLaunched = false;
@@ -60,13 +60,15 @@ async function runOnlineUpgrade(options = {}) {
 
   try {
     if (!app.isPackaged) {
-      await showMessageBox(parentWindow, {
-        type: "info",
-        title: "提示",
-        message: "开发环境不执行在线升级，请使用安装后的客户端验证。",
-        buttons: ["确定"],
-        noLink: true,
-      });
+      if (!silent) {
+        await showMessageBox(parentWindow, {
+          type: "info",
+          title: "提示",
+          message: "开发环境不执行在线升级，请使用安装后的客户端验证。",
+          buttons: ["确定"],
+          noLink: true,
+        });
+      }
       return { skipped: true, reason: "development" };
     }
 
@@ -78,13 +80,15 @@ async function runOnlineUpgrade(options = {}) {
 
     const currentVersion = app.getVersion();
     if (compareVersions(latestVersion, currentVersion) <= 0) {
-      await showMessageBox(parentWindow, {
-        type: "info",
-        title: "提示",
-        message: `当前已是最新版本：${currentVersion}`,
-        buttons: ["确定"],
-        noLink: true,
-      });
+      if (!silent) {
+        await showMessageBox(parentWindow, {
+          type: "info",
+          title: "提示",
+          message: `当前已是最新版本：${currentVersion}`,
+          buttons: ["确定"],
+          noLink: true,
+        });
+      }
       return { skipped: true, reason: "latest", currentVersion };
     }
 
@@ -119,7 +123,9 @@ async function runOnlineUpgrade(options = {}) {
         sendOnlineUpdateStatus(onStatus, {
           busy: true,
           state: "downloading",
-          message: `正在下载 ${formatBytes(bytes)} / ${formatBytes(totalBytes)}`,
+          message: `正在下载 ${formatBytes(bytes)} / ${formatBytes(
+            totalBytes,
+          )}`,
         });
       },
     });
@@ -142,13 +148,15 @@ async function runOnlineUpgrade(options = {}) {
       state: "error",
       message: error.message,
     });
-    await showMessageBox(parentWindow, {
-      type: "error",
-      title: "提示",
-      message: `在线升级失败：${error.message}`,
-      buttons: ["确定"],
-      noLink: true,
-    });
+    if (!silent) {
+      await showMessageBox(parentWindow, {
+        type: "error",
+        title: "提示",
+        message: `在线升级失败：${error.message}`,
+        buttons: ["确定"],
+        noLink: true,
+      });
+    }
     return { error };
   } finally {
     onlineUpgradeInProgress = false;

@@ -33,7 +33,9 @@ function main() {
     ? read("tools/build-package.js")
     : "";
   const pluginPackageExists = exists("src/plugin-package.js");
-  const pluginPackage = pluginPackageExists ? read("src/plugin-package.js") : "";
+  const pluginPackage = pluginPackageExists
+    ? read("src/plugin-package.js")
+    : "";
   const pluginSyncExists = exists("src/plugin-sync.js");
   const pluginSync = pluginSyncExists ? read("src/plugin-sync.js") : "";
   const buildSyncExists = exists("tools/sync-builtin-plugin.js");
@@ -51,7 +53,9 @@ function main() {
   record(
     risks,
     "PLUGIN-SETTINGS-STILL-SELECTS-VERSION",
-    !setHtml.includes('prop: "pluginVersion",\n                  is: "el-select"') &&
+    !setHtml.includes(
+      'prop: "pluginVersion",\n                  is: "el-select"',
+    ) &&
       !setHtml.includes("getVersions()") &&
       !setHtml.includes("downloadPlugin") &&
       !setHtml.includes("syncBuiltinPlugin") &&
@@ -72,9 +76,9 @@ function main() {
     risks,
     "PLUGIN-DOWNLOAD-USES-OLD-PACKAGE",
     !setMain.includes("registry.npmmirror.com/vue-plugin-hiprint") &&
-      pluginSync.includes("PLUGIN_PACKAGE_VERSION_URL") &&
-      pluginSync.includes("assertTrustedPluginTarballUrl"),
-    "plugin sync should use the @amdosion/vue3-print package metadata URL.",
+      buildSync.includes("PLUGIN_PACKAGE_VERSION_URL") &&
+      buildSync.includes("assertTrustedPluginTarballUrl"),
+    "build-time plugin prefetch should use the @amdosion/vue3-print package metadata URL (runtime no longer fetches npm).",
   );
 
   record(
@@ -90,7 +94,7 @@ function main() {
   record(
     risks,
     "PLUGIN-INCOMPATIBLE-PACKAGE-NOT-DIAGNOSED",
-    pluginSync.includes("formatMissingPluginFiles") &&
+    buildSync.includes("formatMissingPluginFiles") &&
       pluginPackage.includes("Electron 内置渲染") &&
       renderHtml.includes("@amdosion/vue3-print"),
     "missing browser/global plugin files should produce a targeted diagnostic instead of a generic failure or blank renderer.",
@@ -98,14 +102,15 @@ function main() {
 
   record(
     risks,
-    "PLUGIN-RUNTIME-AUTO-SYNC-MISSING",
+    "PLUGIN-RUNTIME-SHOULD-NOT-FETCH-NPM",
     pluginSyncExists &&
-      pluginSync.includes("syncLatestBuiltinPluginWithFallback") &&
+      pluginSync.includes("resolveBuiltinPluginVersion") &&
       pluginSync.includes('store.set("pluginVersion"') &&
-      mainProcess.includes("syncLatestBuiltinPluginWithFallback") &&
+      !pluginSync.includes("https") &&
+      mainProcess.includes("resolveBuiltinPluginVersion") &&
       mainProcess.indexOf("await ensureBuiltinPlugin()") <
         mainProcess.indexOf("await renderSetup()"),
-    "client startup should auto-sync npm latest and set pluginVersion before creating the render window.",
+    "client runtime should resolve the baked plugin version locally (no npm fetch) and set pluginVersion before creating the render window; plugins update via a new client release.",
   );
 
   record(
@@ -139,9 +144,9 @@ function main() {
   record(
     risks,
     "PLUGIN-DOWNLOAD-ERROR-HIDES-CAUSE",
-    mainProcess.includes("内置渲染插件自动同步失败") &&
+    mainProcess.includes("内置渲染插件解析失败") &&
       mainProcess.includes("error.message"),
-    "startup plugin sync errors should be logged with the actual npm/package compatibility error.",
+    "startup plugin resolution errors should be logged with the actual error message.",
   );
 
   record(

@@ -1,0 +1,3 @@
+# 内置渲染插件目录占位。
+# 实际插件文件由「构建期」tools/sync-builtin-plugin.js 从 npm @amdosion/vue3-print 烘焙生成，
+# 不纳入版本库（见 .gitignore）。dev 环境运行 `npm run sync-plugin` 生成。

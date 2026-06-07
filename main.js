@@ -23,7 +23,7 @@ const renderSetup = require("./src/render");
 const setSetup = require("./src/set");
 const printLogSetup = require("./src/printLog");
 const { getAssetUrl } = require("./src/asset-url");
-const { syncLatestBuiltinPluginWithFallback } = require("./src/plugin-sync");
+const { resolveBuiltinPluginVersion } = require("./src/plugin-sync");
 const { runOnlineUpgrade } = require("./src/online-upgrade-runner");
 const {
   store,
@@ -359,21 +359,27 @@ async function createWindow() {
   // 本地服务初始化不依赖主窗口 DOM，避免页面加载失败导致服务不可用。
   startLocalServices();
 
+  // 启动后静默检查客户端在线升级：仅打包环境执行，发现新版本才弹窗提示，
+  // 无新版本或检查失败时静默处理，不打扰用户。
+  if (app.isPackaged) {
+    setTimeout(() => {
+      runOnlineUpgrade({
+        parentWindow: MAIN_WINDOW,
+        onStatus: updateOnlineUpgradeTrayState,
+        silent: true,
+      }).catch((error) => console.error("启动自动检查更新失败:", error));
+    }, 5000);
+  }
+
   return MAIN_WINDOW;
 }
 
-async function ensureBuiltinPlugin() {
+function ensureBuiltinPlugin() {
   try {
-    const result = await syncLatestBuiltinPluginWithFallback();
-    console.log(
-      `==> 内置渲染插件 ${result.downloaded ? "已下载并启用" : "已启用"}: ${
-        result.pluginVersion
-      } <==`,
-    );
+    const result = resolveBuiltinPluginVersion();
+    console.log(`==> 内置渲染插件已启用: ${result.pluginVersion} <==`);
   } catch (error) {
-    console.error(
-      `==> 内置渲染插件自动同步失败，回退到 ${error.fallbackVersion}: ${error.message} <==`,
-    );
+    console.error(`==> 内置渲染插件解析失败: ${error.message} <==`);
   }
 }
 

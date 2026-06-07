@@ -1,0 +1,68 @@
+name: Bump on plugin release
+
+# 联动链路第 2 环（纯 GitHub 事件联动，不在仓库内同步/提交任何插件文件）：
+#   插件仓库 vue-plugin-hiprint-v2 发布 npm 后，通过 repository_dispatch 触发本工作流。
+#   本工作流只：自增客户端 patch 版本 -> 提交 package.json -> 打 tag。
+#   tag 推送触发 release.yml；release 构建阶段由 tools/build-package.js ->
+#   tools/sync-builtin-plugin.js 在「构建期」从 npm 拉取最新插件烘焙进安装包。
+#   插件因此永远只在构建产物里，绝不进版本库。
+#
+# 重要：推 tag 必须使用 PAT（secrets.RELEASE_PAT），不能用自带 GITHUB_TOKEN，
+# 否则 GitHub 的防递归机制会导致 release.yml 不被触发。
+#
+# 安全：repository_dispatch 的 client_payload 完全由调用方构造，视为不可信输入，
+# 经 env 注入并校验后才使用。
+
+on:
+  repository_dispatch:
+    types: [plugin-released]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: plugin-bump
+  cancel-in-progress: false
+
+jobs:
+  bump-and-tag:
+    name: Bump client and push tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v5
+        with:
+          ref: master
+          fetch-depth: 0
+          # 用 PAT 拉取/推送，确保后续 tag push 能触发 release.yml
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Bump client patch version
+        id: bump
+        run: |
+          NEW=$(npm version patch --no-git-tag-version | tr -d 'v')
+          echo "version=${NEW}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push tag
+        env:
+          CLIENT_VERSION: ${{ steps.bump.outputs.version }}
+          PLUGIN_VERSION: ${{ github.event.client_payload.pluginVersion }}
+        run: |
+          SAFE_PV=latest
+          if printf '%s' "$PLUGIN_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'; then
+            SAFE_PV="$PLUGIN_VERSION"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore(release): client ${CLIENT_VERSION} (plugin ${SAFE_PV})"
+          git push origin master
+          git tag "${CLIENT_VERSION}"
+          git push origin "${CLIENT_VERSION}"
