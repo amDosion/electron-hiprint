@@ -209,14 +209,10 @@ async function initialize() {
     return;
   }
 
-  // 当运行第二个实例时,聚焦到 MAIN_WINDOW 这个窗口
+  // 当运行第二个实例时（如已在托盘运行时再次双击桌面图标），显示并聚焦主窗口
   app.on("second-instance", () => {
     if (MAIN_WINDOW) {
-      if (MAIN_WINDOW.isMinimized()) {
-        // 将窗口从最小化状态恢复到以前的状态
-        MAIN_WINDOW.restore();
-      }
-      MAIN_WINDOW.focus();
+      showMainWindow();
     }
   });
 
@@ -339,6 +335,9 @@ async function createWindow() {
     app.setLoginItemSettings({
       openAtLogin: store.get("openAtLogin"),
       openAsHidden: store.get("openAsHidden"),
+      // Windows 不支持原生 openAsHidden：用启动参数标记"随登录自启动"，
+      // 以便仅在登录自启时隐藏，手动双击桌面图标启动时正常显示窗口。
+      args: store.get("openAsHidden") ? ["--openAsHidden"] : [],
     });
   }
 
@@ -382,7 +381,13 @@ async function createWindow() {
   // 主窗口 Dom 加载完毕
   MAIN_WINDOW.webContents.on("dom-ready", async () => {
     try {
-      if (!store.get("openAsHidden")) {
+      // openAsHidden 仅应在"随系统登录自启动"时隐藏窗口；手动启动（双击桌面图标）应正常显示。
+      // Windows 通过登录项启动参数 --openAsHidden 标记自启，macOS 用 wasOpenedAtLogin 判定。
+      const openedAtLogin =
+        process.argv.includes("--openAsHidden") ||
+        (process.platform === "darwin" &&
+          app.getLoginItemSettings().wasOpenedAtLogin);
+      if (!(store.get("openAsHidden") && openedAtLogin)) {
         MAIN_WINDOW.show();
       }
       // 未打包时打开开发者工具
