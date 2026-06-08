@@ -51,7 +51,9 @@
       "!tools/sync-builtin-plugin.js",
       "!tools/code_compress.js",
       "!tools/rename.js",
-      "!out/**"
+      "!out/**",
+      "!**/*.log",
+      "!.investigations/**"
     ],
     "extraResources": [
       "plugin/*"
