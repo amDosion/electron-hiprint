@@ -8,7 +8,7 @@
 const {
   app,
   BrowserWindow,
-  BrowserView,
+  WebContentsView,
   ipcMain,
   dialog,
 } = require("electron");
@@ -26,7 +26,7 @@ function createPrintLogWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(__dirname, "preload/printLog.js"),
     },
   };
@@ -60,22 +60,30 @@ function createPrintLogWindow() {
  * @return {void}
  */
 function loadingView(windowOptions) {
-  const loadingBrowserView = new BrowserView();
-  PRINT_LOG_WINDOW.setBrowserView(loadingBrowserView);
-  loadingBrowserView.setBounds({
+  const loadingContentView = new WebContentsView();
+  PRINT_LOG_WINDOW.contentView.addChildView(loadingContentView);
+  loadingContentView.setBounds({
     x: 0,
     y: 0,
     width: windowOptions.width,
     height: windowOptions.height,
   });
 
-  loadingBrowserView.webContents.loadURL(getAssetUrl("loading.html"));
+  loadingContentView.webContents.loadURL(getAssetUrl("loading.html"));
 
-  // 打印日志窗口 dom 加载完毕，移除 loadingBrowserView
-  PRINT_LOG_WINDOW.webContents.on("dom-ready", async (event) => {
-    loadingBrowserView.webContents.destroy();
-    PRINT_LOG_WINDOW.removeBrowserView(loadingBrowserView);
-  });
+  const removeLoadingView = () => {
+    if (
+      loadingContentView.webContents &&
+      !loadingContentView.webContents.isDestroyed()
+    ) {
+      loadingContentView.webContents.destroy();
+    }
+    PRINT_LOG_WINDOW.contentView.removeChildView(loadingContentView);
+  };
+
+  // dom 加载完毕移除加载视图；加载失败也清理，避免 WebContents 泄漏
+  PRINT_LOG_WINDOW.webContents.on("dom-ready", removeLoadingView);
+  PRINT_LOG_WINDOW.webContents.on("did-fail-load", removeLoadingView);
 }
 
 /**
@@ -99,10 +107,27 @@ function fetchPrintLogs(event, { condition, params, page, sort }) {
     total += " WHERE " + condition.join(" AND ");
   }
 
-  if (sort.prop && sort.order) {
-    query += ` ORDER BY ${sort.prop} ${sort.order
-      .replace("ending", "")
-      .toUpperCase()}`;
+  // 排序字段/方向白名单：sort.prop 来自渲染端 IPC，直接拼接进 ORDER BY 存在注入风险
+  const SORTABLE_COLUMNS = [
+    "id",
+    "timestamp",
+    "socketId",
+    "clientType",
+    "printer",
+    "templateId",
+    "pageNum",
+    "status",
+    "rePrintAble",
+    "errorMessage",
+  ];
+  if (sort.prop && sort.order && SORTABLE_COLUMNS.includes(sort.prop)) {
+    const direction =
+      String(sort.order)
+        .replace("ending", "")
+        .toUpperCase() === "ASC"
+        ? "ASC"
+        : "DESC";
+    query += ` ORDER BY ${sort.prop} ${direction}`;
   }
 
   query += ` LIMIT ${page.pageSize} OFFSET ${(page.currentPage - 1) *

@@ -1,10 +1,7 @@
 "use strict";
 
-const { contextBridge, ipcRenderer, clipboard } = require("electron");
-const Store = require("electron-store");
-const { version } = require("../../package.json");
+const { contextBridge, ipcRenderer } = require("electron");
 
-const store = new Store();
 const sendChannels = new Set([
   "getMachineId",
   "getAddress",
@@ -22,8 +19,10 @@ const onChannels = new Set([
 ]);
 
 contextBridge.exposeInMainWorld("hiprintIndex", {
-  title: store.get("mainTitle") || "Electron-hiprint",
-  version,
+  title:
+    ipcRenderer.sendSync("hiprint:store-get", "mainTitle") ||
+    "Electron-hiprint",
+  version: ipcRenderer.sendSync("hiprint:app-version"),
   send(channel, data) {
     if (sendChannels.has(channel)) {
       ipcRenderer.send(channel, data);
@@ -35,6 +34,6 @@ contextBridge.exposeInMainWorld("hiprintIndex", {
     }
   },
   writeText(text) {
-    clipboard.writeText(String(text || ""));
+    ipcRenderer.send("hiprint:clipboard-write", String(text || ""));
   },
 });

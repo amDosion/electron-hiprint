@@ -2,6 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' file: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' file:; style-src 'self' 'unsafe-inline' file: data:; img-src 'self' data: blob: file: http: https:; font-src 'self' data: file:; connect-src 'self' data: blob: file: http: https:; media-src 'self' data: blob: file: http: https:"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
       body {
@@ -64,10 +68,27 @@
 
       function sanitizeNode(root) {
         root.querySelectorAll("script").forEach((node) => node.remove());
+        // 移除 SVG <foreignObject>（可内嵌任意可执行 HTML）
+        root.querySelectorAll("foreignObject").forEach((node) => node.remove());
         root.querySelectorAll("*").forEach((node) => {
           Array.from(node.attributes).forEach((attribute) => {
-            if (/^on/i.test(attribute.name)) {
-              node.removeAttribute(attribute.name);
+            const name = attribute.name;
+            // 移除事件处理属性
+            if (/^on/i.test(name)) {
+              node.removeAttribute(name);
+              return;
+            }
+            // 移除 javascript: 协议的 href/src/xlink:href 等属性
+            const value = (attribute.value || "")
+              .replace(/[\x00-\x20]+/g, "")
+              .toLowerCase();
+            if (
+              /^(href|xlink:href|src|action|formaction|data|background)$/i.test(
+                name,
+              ) &&
+              value.startsWith("javascript:")
+            ) {
+              node.removeAttribute(name);
             }
           });
         });

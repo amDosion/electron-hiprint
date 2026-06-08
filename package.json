@@ -46,6 +46,11 @@
       "!.omx/**",
       "!docs/**",
       "!tools/repro/**",
+      "!tools/build-package.js",
+      "!tools/run-electron-builder.js",
+      "!tools/sync-builtin-plugin.js",
+      "!tools/code_compress.js",
+      "!tools/rename.js",
       "!out/**"
     ],
     "extraResources": [

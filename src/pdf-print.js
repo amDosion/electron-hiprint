@@ -42,8 +42,8 @@ const realPrint = (pdfPath, printer, data, resolve, reject) => {
       .then(() => {
         resolve();
       })
-      .catch(() => {
-        reject();
+      .catch((err) => {
+        reject(err);
       });
   } else {
     // 参数见 lp 命令 使用方法, 使用外部传入的lp命令
@@ -51,8 +51,8 @@ const realPrint = (pdfPath, printer, data, resolve, reject) => {
       .then(() => {
         resolve();
       })
-      .catch(() => {
-        reject();
+      .catch((err) => {
+        reject(err);
       });
   }
 };
@@ -111,8 +111,7 @@ const printPdfBlob = (pdfBlob, printer, data) => {
       // 验证blob数据 实际是 Uint8Array
       if (
         !pdfBlob ||
-        !(
-          pdfBlob instanceof Uint8Array || Buffer.isBuffer(pdfBlob))
+        !(pdfBlob instanceof Uint8Array || Buffer.isBuffer(pdfBlob))
       ) {
         reject(new Error("pdfBlob must be a Uint8Array, Buffer"));
         return;

@@ -9,7 +9,7 @@
 const {
   app,
   BrowserWindow,
-  BrowserView,
+  WebContentsView,
   ipcMain,
   dialog,
   shell,
@@ -36,7 +36,7 @@ async function createSetWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(__dirname, "preload/set.js"),
     },
   };
@@ -70,22 +70,30 @@ async function createSetWindow() {
  * @return {void}
  */
 function loadingView(windowOptions) {
-  const loadingBrowserView = new BrowserView();
-  SET_WINDOW.setBrowserView(loadingBrowserView);
-  loadingBrowserView.setBounds({
+  const loadingContentView = new WebContentsView();
+  SET_WINDOW.contentView.addChildView(loadingContentView);
+  loadingContentView.setBounds({
     x: 0,
     y: 0,
     width: windowOptions.width,
     height: windowOptions.height,
   });
 
-  loadingBrowserView.webContents.loadURL(getAssetUrl("loading.html"));
+  loadingContentView.webContents.loadURL(getAssetUrl("loading.html"));
 
-  // 设置窗口 dom 加载完毕，移除 loadingBrowserView
-  SET_WINDOW.webContents.on("dom-ready", async (event) => {
-    loadingBrowserView.webContents.destroy();
-    SET_WINDOW.removeBrowserView(loadingBrowserView);
-  });
+  const removeLoadingView = () => {
+    if (
+      loadingContentView.webContents &&
+      !loadingContentView.webContents.isDestroyed()
+    ) {
+      loadingContentView.webContents.destroy();
+    }
+    SET_WINDOW.contentView.removeChildView(loadingContentView);
+  };
+
+  // dom 加载完毕移除加载视图；加载失败也清理，避免 WebContents 泄漏
+  SET_WINDOW.webContents.on("dom-ready", removeLoadingView);
+  SET_WINDOW.webContents.on("did-fail-load", removeLoadingView);
 }
 
 /**

@@ -1,9 +1,7 @@
 "use strict";
 
 const { contextBridge, ipcRenderer } = require("electron");
-const Store = require("electron-store");
 
-const store = new Store();
 const sendChannels = new Set([
   "setConfig",
   "setContentSize",
@@ -13,13 +11,10 @@ const sendChannels = new Set([
   "closeSetWindow",
   "getPrintersList",
 ]);
-const onChannels = new Set([
-  "getPrintersList",
-  "openDialog",
-]);
+const onChannels = new Set(["getPrintersList", "openDialog"]);
 
 contextBridge.exposeInMainWorld("hiprintSet", {
-  store: store.store,
+  store: ipcRenderer.sendSync("hiprint:settings-snapshot"),
   send(channel, data) {
     if (sendChannels.has(channel)) {
       ipcRenderer.send(channel, data);

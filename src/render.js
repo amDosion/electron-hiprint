@@ -75,7 +75,7 @@ async function createRenderWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(__dirname, "preload/render.js"),
     },
     // 为窗口设置背景色可能优化字体模糊问题
@@ -182,8 +182,8 @@ async function capturePage(event, data) {
       // 等待滚动完成
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // 计算最后一页需要截取的高度
-      captureOptions.height = offset > height ? offset - height : height;
+      // 计算最后一页需要截取的高度（最后一页可能不足一屏，取剩余内容高度）
+      captureOptions.height = Math.min(height, data.height - offset);
 
       const image = await RENDER_WINDOW.webContents.capturePage(captureOptions);
       // 有说法 toJPEG 性能比 toPNG 更高
@@ -198,34 +198,33 @@ async function capturePage(event, data) {
       result.composite(jimpImg, 0, idx * height);
     }
 
-    result
-      .getBuffer("image/jpeg", {
-        quality: 100,
-      })
-      .then((buffer) => {
-        // 未打包调试模式下将图片保存到桌面
-        if (!app.isPackaged) {
-          fs.writeFile(
-            path.join(
-              app.getPath("desktop"),
-              `capture_${dayjs().format("YYYY-MM-DD HH_mm_ss")}.png`,
-            ),
-            buffer,
-            () => {},
-          );
-        }
-        console.log(
-          `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模版 【${
-            data.templateId
-          }】 获取 png 成功`,
-        );
-        socket.emit("render-jpeg-success", {
-          msg: `获取 jpeg 成功`,
-          templateId: data.templateId,
-          buffer,
-          replyId: data.replyId,
-        });
-      });
+    // await 截图缓冲：纳入 try/catch，失败回传 render-jpeg-error；
+    // 且在 emit 完成后才进入 finally 释放 runner，避免 RENDER_WINDOW 被下一任务并发复用
+    const buffer = await result.getBuffer("image/jpeg", {
+      quality: 100,
+    });
+    // 未打包调试模式下将图片保存到桌面
+    if (!app.isPackaged) {
+      fs.writeFile(
+        path.join(
+          app.getPath("desktop"),
+          `capture_${dayjs().format("YYYY-MM-DD HH_mm_ss")}.png`,
+        ),
+        buffer,
+        () => {},
+      );
+    }
+    console.log(
+      `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模版 【${
+        data.templateId
+      }】 获取 png 成功`,
+    );
+    socket.emit("render-jpeg-success", {
+      msg: `获取 jpeg 成功`,
+      templateId: data.templateId,
+      buffer,
+      replyId: data.replyId,
+    });
   } catch (error) {
     console.log(
       `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模版 【${

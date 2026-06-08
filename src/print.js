@@ -23,7 +23,7 @@ async function createPrintWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(__dirname, "preload/print.js"),
     },
     // 为窗口设置背景色可能优化字体模糊问题
@@ -194,6 +194,10 @@ function initPrintEvent() {
               logPrintResult("failed", err.message);
             })
             .finally(() => {
+              // 删除临时 PDF 文件，避免 pdfPath/hiprint 目录无限堆积
+              try {
+                fs.unlinkSync(pdfPath);
+              } catch (_) {}
               if (data.taskId) {
                 // 通过taskMap 调用 task done 回调
                 PRINT_RUNNER_DONE[data.taskId]();
@@ -202,6 +206,27 @@ function initPrintEvent() {
               }
               MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
             });
+        })
+        .catch((err) => {
+          // printToPDF 自身拒绝（渲染进程崩溃、非法 pageSize、磁盘满等）：
+          // 若不在此兜底，PRINT_RUNNER_DONE 永不调用 → 打印队列对后续任务永久死锁
+          console.log(
+            `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
+              data.templateId
+            }】 PDF 生成失败，打印机：${deviceName}，原因：${err?.message}`,
+          );
+          socket &&
+            socket.emit("error", {
+              msg: "PDF生成失败: " + (err?.message || err),
+              templateId: data.templateId,
+              replyId: data.replyId,
+            });
+          logPrintResult("failed", err?.message || String(err));
+          if (data.taskId) {
+            PRINT_RUNNER_DONE[data.taskId]();
+            delete PRINT_RUNNER_DONE[data.taskId];
+          }
+          MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
         });
       return;
     }
@@ -404,7 +429,17 @@ function initPrintEvent() {
 }
 
 function checkPrinterStatus(deviceName, callback) {
+  // 最大轮询次数，避免打印机被拔除/移除后 printer 始终 undefined 导致 interval 永久空转（资源泄漏）
+  const MAX_ATTEMPTS = 60;
+  let attempts = 0;
   const intervalId = setInterval(() => {
+    if (++attempts > MAX_ATTEMPTS) {
+      clearInterval(intervalId);
+      console.log(
+        `Printer ${deviceName} status check timed out after ${MAX_ATTEMPTS} attempts`,
+      );
+      return;
+    }
     PRINT_WINDOW.webContents
       .getPrintersAsync()
       .then((printers) => {

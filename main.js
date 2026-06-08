@@ -7,12 +7,13 @@
 const {
   app,
   BrowserWindow,
-  BrowserView,
+  WebContentsView,
   ipcMain,
   Notification,
   Tray,
   Menu,
   shell,
+  clipboard,
 } = require("electron");
 const electronLog = require("electron-log");
 const path = require("path");
@@ -254,6 +255,49 @@ async function initialize() {
     emitConnectionStatus(event.sender);
   });
 
+  // 供 sandbox 化的 preload 同步读取配置/版本
+  // （sandbox 渲染进程的 preload 不能 require electron-store 或 json 文件，改走同步 IPC 保持原同步契约）
+  ipcMain.on("hiprint:store-get", (event, key) => {
+    event.returnValue = store.get(key);
+  });
+  ipcMain.on("hiprint:app-version", (event) => {
+    event.returnValue = app.getVersion();
+  });
+  // 设置窗口所需配置快照：仅投影已知配置键，避免把整个 store（含未来新增的非设置字段）自动暴露给渲染进程
+  ipcMain.on("hiprint:settings-snapshot", (event) => {
+    const SETTINGS_SNAPSHOT_KEYS = [
+      "mainTitle",
+      "port",
+      "token",
+      "nickName",
+      "openAtLogin",
+      "openAsHidden",
+      "connectTransit",
+      "transitUrl",
+      "transitToken",
+      "allowNotify",
+      "closeType",
+      "logPath",
+      "pdfPath",
+      "defaultPrinter",
+      "disabledGpu",
+      "pluginVersion",
+      "rePrint",
+      "bindHost",
+      "exportDirectory",
+    ];
+    const snapshot = {};
+    SETTINGS_SNAPSHOT_KEYS.forEach((key) => {
+      const value = store.get(key);
+      if (value !== undefined) snapshot[key] = value;
+    });
+    event.returnValue = snapshot;
+  });
+  // 复制到剪贴板（sandbox 渲染进程的 preload 不能直接使用 clipboard 模块，转由主进程执行）
+  ipcMain.on("hiprint:clipboard-write", (event, text) => {
+    clipboard.writeText(String(text || ""));
+  });
+
   // 当electron完成初始化
   app.whenReady().then(() => {
     // 创建浏览器窗口
@@ -283,7 +327,7 @@ async function createWindow() {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       preload: path.join(__dirname, "src/preload/index.js"),
     },
   };
@@ -389,22 +433,30 @@ function ensureBuiltinPlugin() {
  * @return {Void}
  */
 function loadingView(windowOptions) {
-  const loadingBrowserView = new BrowserView();
-  MAIN_WINDOW.setBrowserView(loadingBrowserView);
-  loadingBrowserView.setBounds({
+  const loadingContentView = new WebContentsView();
+  MAIN_WINDOW.contentView.addChildView(loadingContentView);
+  loadingContentView.setBounds({
     x: 0,
     y: 0,
     width: windowOptions.width,
     height: windowOptions.height,
   });
 
-  loadingBrowserView.webContents.loadURL(getAssetUrl("loading.html"));
+  loadingContentView.webContents.loadURL(getAssetUrl("loading.html"));
 
-  // 主窗口 dom 加载完毕，移除 loadingBrowserView
-  MAIN_WINDOW.webContents.on("dom-ready", async (event) => {
-    loadingBrowserView.webContents.destroy();
-    MAIN_WINDOW.removeBrowserView(loadingBrowserView);
-  });
+  const removeLoadingView = () => {
+    if (
+      loadingContentView.webContents &&
+      !loadingContentView.webContents.isDestroyed()
+    ) {
+      loadingContentView.webContents.destroy();
+    }
+    MAIN_WINDOW.contentView.removeChildView(loadingContentView);
+  };
+
+  // dom 加载完毕移除加载视图；加载失败也清理，避免 WebContents 泄漏
+  MAIN_WINDOW.webContents.on("dom-ready", removeLoadingView);
+  MAIN_WINDOW.webContents.on("did-fail-load", removeLoadingView);
 }
 
 /**

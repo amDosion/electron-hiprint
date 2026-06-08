@@ -47,7 +47,9 @@ function patchWin32PdfPrinterBinPath() {
       return quoteIfNeeded(replaced);
     }
     if (replaced.startsWith(unpackedBin + " ")) {
-      return `${quoteIfNeeded(unpackedBin)}${replaced.slice(unpackedBin.length)}`;
+      return `${quoteIfNeeded(unpackedBin)}${replaced.slice(
+        unpackedBin.length,
+      )}`;
     }
     if (replaced.startsWith(unpackedBinNormalized + " ")) {
       return `${quoteIfNeeded(unpackedBinNormalized)}${replaced.slice(
@@ -261,7 +263,8 @@ function addressMac() {
   return new Promise((resolve) => {
     address.mac(function(err, addr) {
       if (err) {
-        resolve(err);
+        // 获取失败返回空串而非 Error 对象，避免 clientInfo.mac 被填成序列化错误对象
+        resolve("");
       } else {
         resolve(addr);
       }
@@ -312,7 +315,8 @@ function getMachineId() {
     return machineIdSync({ original: true });
   } catch (error) {
     // 若获取失败，也可以使用 UUID 代替，需要单独存储 首次创建 后续读取
-    // 默认返回空 表示读不到就好
+    // 默认返回空 表示读不到就好；记录错误以便打包后从日志文件排查
+    console.error("getMachineId failed", error);
     return "";
   }
 }
@@ -519,7 +523,9 @@ function createIppTargetError(message) {
 }
 
 function normalizeExtension(value) {
-  const text = String(value || "").trim().toLowerCase();
+  const text = String(value || "")
+    .trim()
+    .toLowerCase();
   if (!text) return "";
   return text.startsWith(".") ? text : `.${text}`;
 }
@@ -537,7 +543,9 @@ function sanitizeExportFileName(fileName) {
   ) {
     throw createExportError("FILE_NAME_INVALID", "文件名不能包含路径片段");
   }
-  const baseName = path.basename(original).replace(/[\x00-\x1f<>:"/\\|?*]/g, "_");
+  const baseName = path
+    .basename(original)
+    .replace(/[\x00-\x1f<>:"/\\|?*]/g, "_");
   const parsed = path.parse(baseName);
   if (!parsed.name || RESERVED_WINDOWS_NAMES.has(parsed.name.toLowerCase())) {
     throw createExportError("FILE_NAME_RESERVED", "文件名为系统保留名称");
@@ -568,11 +576,7 @@ function ensureExportPathInsideRoot(rootPath, fileName) {
   const root = fs.realpathSync(rootPath);
   const target = path.resolve(root, fileName);
   const relative = path.relative(root, target);
-  if (
-    !relative ||
-    relative.startsWith("..") ||
-    path.isAbsolute(relative)
-  ) {
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
     throw createExportError("PATH_OUTSIDE_ROOT", "导出路径超出授权目录");
   }
   return target;
@@ -607,7 +611,7 @@ function handleFileExportTask(client, task) {
   const taskId = (task && task.taskId) || uuidv7();
   let tempPath = "";
   const emitError = (err) => {
-    client.emit("file.export.v1.error", {
+    client.emit("file.export.error", {
       taskId,
       replyId,
       code: err.code || "FILE_EXPORT_FAILED",
@@ -618,7 +622,10 @@ function handleFileExportTask(client, task) {
   try {
     const config = normalizeExportDirectoryConfig();
     if (!config.enabled || !config.path) {
-      throw createExportError("FILE_EXPORT_DISABLED", "客户端未启用共享导出目录");
+      throw createExportError(
+        "FILE_EXPORT_DISABLED",
+        "客户端未启用共享导出目录",
+      );
     }
     fs.accessSync(config.path, fs.constants.W_OK);
     const fileName = sanitizeExportFileName(task && task.fileName);
@@ -627,7 +634,10 @@ function handleFileExportTask(client, task) {
       throw createExportError("FILE_EXTENSION_BLOCKED", "文件扩展名被禁止");
     }
     if (!config.allowedExtensions.includes(extension)) {
-      throw createExportError("FILE_EXTENSION_NOT_ALLOWED", "文件扩展名未被允许");
+      throw createExportError(
+        "FILE_EXTENSION_NOT_ALLOWED",
+        "文件扩展名未被允许",
+      );
     }
 
     const buffer = decodeExportPayload(task);
@@ -635,7 +645,10 @@ function handleFileExportTask(client, task) {
       throw createExportError("FILE_TOO_LARGE", "导出文件超过客户端大小限制");
     }
     if (task.sha256) {
-      const digest = crypto.createHash("sha256").update(buffer).digest("hex");
+      const digest = crypto
+        .createHash("sha256")
+        .update(buffer)
+        .digest("hex");
       if (digest.toLowerCase() !== String(task.sha256).toLowerCase()) {
         throw createExportError("CHECKSUM_MISMATCH", "导出文件校验失败");
       }
@@ -649,11 +662,13 @@ function handleFileExportTask(client, task) {
     fs.writeFileSync(tempPath, buffer, { flag: "wx" });
     fs.renameSync(tempPath, target);
     tempPath = "";
-    client.emit("file.export.v1.success", {
+    client.emit("file.export.success", {
       taskId,
       replyId,
       fileName: path.basename(target),
-      displayPath: `${getExportCapability().displayName}/${path.basename(target)}`,
+      displayPath: `${getExportCapability().displayName}/${path.basename(
+        target,
+      )}`,
       bytes: buffer.length,
       sha256: task.sha256,
     });
@@ -675,29 +690,36 @@ function handleFileExportTask(client, task) {
  * @return {void}
  */
 function emitClientInfo(socket) {
-  _address.mac().then((mac) => {
-    const defaultPrinter = store.get("defaultPrinter", "");
-    const bindHost = store.get("bindHost") || "127.0.0.1";
-    const clientHost =
-      bindHost === "0.0.0.0" || bindHost === "::" ? _address.ip() : bindHost;
-    socket.emit("clientInfo", {
-      hostname: os.hostname(), // 主机名
-      version: app.getVersion(), // 版本号
-      platform: process.platform, // 平台
-      arch: process.arch, // 系统架构
-      mac: mac, // mac 地址
-      ip: _address.ip(), // ip 地址
-      ipv6: _address.ipv6(), // ipv6 地址
-      clientUrl: `http://${clientHost}:${store.get("port") || 17521}`, // 客户端地址
-      machineId: getMachineId(), // 客户端唯一id
-      nickName: store.get("nickName"), // 客户端昵称
-      defaultPrinter, // 客户端高级设置里的默认打印机
-      capabilities: {
-        print: { enabled: true },
-        fileExport: getExportCapability(),
-      },
+  _address
+    .mac()
+    .then((mac) => {
+      const defaultPrinter = store.get("defaultPrinter", "");
+      const bindHost = store.get("bindHost") || "127.0.0.1";
+      const clientHost =
+        bindHost === "0.0.0.0" || bindHost === "::" ? _address.ip() : bindHost;
+      socket.emit("clientInfo", {
+        hostname: os.hostname(), // 主机名
+        version: app.getVersion(), // 版本号
+        platform: process.platform, // 平台
+        arch: process.arch, // 系统架构
+        mac: mac, // mac 地址
+        ip: _address.ip(), // ip 地址
+        ipv6: _address.ipv6(), // ipv6 地址
+        clientUrl: `http://${clientHost}:${store.get("port") || 17521}`, // 客户端地址
+        machineId: getMachineId(), // 客户端唯一id
+        nickName: store.get("nickName"), // 客户端昵称
+        defaultPrinter, // 客户端高级设置里的默认打印机
+        capabilities: {
+          print: { enabled: true },
+          fileExport: getExportCapability(),
+        },
+      });
+    })
+    .catch((err) => {
+      // _address.mac() 不会 reject，但 then 体内（如 socket.emit）若同步抛出，
+      // 无 catch 会成为不可见的 unhandledRejection；记录以便排查
+      console.error("emitClientInfo failed", err);
     });
-  });
 }
 
 async function getConfiguredPrinterList() {
@@ -868,10 +890,7 @@ function initServeEvent(server) {
     }
 
     // 向 client 发送打印机列表
-    socket.emit(
-      "printerList",
-      await getConfiguredPrinterList(),
-    );
+    socket.emit("printerList", await getConfiguredPrinterList());
 
     // 向 client 发送客户端信息
     emitClientInfo(socket);
@@ -919,10 +938,7 @@ function initServeEvent(server) {
      */
     socket.on("refreshPrinterList", async () => {
       console.log(`插件端 ${socket.id}: refreshPrinterList`);
-      socket.emit(
-        "printerList",
-        await getConfiguredPrinterList(),
-      );
+      socket.emit("printerList", await getConfiguredPrinterList());
     });
 
     /**
@@ -935,11 +951,12 @@ function initServeEvent(server) {
           typeof printer === "string"
             ? printer
             : printer && typeof printer.printer === "string"
-              ? printer.printer
-              : "";
+            ? printer.printer
+            : "";
         let paper = getPaperSizeInfoAll();
         if (printerName) {
-          paper = paper.find((item) => item.PrinterName === printerName) || null;
+          paper =
+            paper.find((item) => item.PrinterName === printerName) || null;
         }
         paper && socket.emit("paperSizeInfo", paper);
       }
@@ -1124,6 +1141,13 @@ function initServeEvent(server) {
       }
     });
 
+    // 本地服务端文件导出：镜像中转路径(initClientEvent)的 file.export 监听，
+    // 使直连本地 Socket.IO 服务的插件端也能触发文件导出（此前仅中转路径已接线）
+    socket.on("file.export", (data) => {
+      console.log(`插件端 ${socket.id}: file.export`);
+      handleFileExportTask(socket, data);
+    });
+
     /**
      * @description: client 查询打印状态
      * @param {Object} data
@@ -1135,7 +1159,9 @@ function initServeEvent(server) {
         data && Array.isArray(data.templateIds) ? data.templateIds : [],
         (rows) => socket.emit("printStatus", rows),
         (err) => {
-          console.error(`插件端 ${socket.id}: getPrintStatus error: ${err.message}`);
+          console.error(
+            `插件端 ${socket.id}: getPrintStatus error: ${err.message}`,
+          );
           socket.emit("printStatusError", { msg: err.message });
         },
       );
@@ -1224,10 +1250,7 @@ function initClientEvent() {
     }
 
     // 向 中转服务 发送打印机列表
-    client.emit(
-      "printerList",
-      await getConfiguredPrinterList(),
-    );
+    client.emit("printerList", await getConfiguredPrinterList());
 
     // 向 中转服务 发送客户端信息
     emitClientInfo(client);
@@ -1246,10 +1269,7 @@ function initClientEvent() {
    */
   client.on("refreshPrinterList", async () => {
     console.log(`中转服务 ${client.id}: refreshPrinterList`);
-    client.emit(
-      "printerList",
-      await getConfiguredPrinterList(),
-    );
+    client.emit("printerList", await getConfiguredPrinterList());
   });
 
   /**
@@ -1394,8 +1414,8 @@ function initClientEvent() {
     }
   });
 
-  client.on("file.export.v1", (data) => {
-    console.log(`中转服务 ${client.id}: file.export.v1`);
+  client.on("file.export", (data) => {
+    console.log(`中转服务 ${client.id}: file.export`);
     handleFileExportTask(client, data);
   });
 
@@ -1410,7 +1430,9 @@ function initClientEvent() {
       data && Array.isArray(data.templateIds) ? data.templateIds : [],
       (rows) => client.emit("printStatus", rows),
       (err) => {
-        console.error(`中转服务 ${client.id}: getPrintStatus error: ${err.message}`);
+        console.error(
+          `中转服务 ${client.id}: getPrintStatus error: ${err.message}`,
+        );
         client.emit("printStatusError", { msg: err.message });
       },
     );
@@ -1430,8 +1452,7 @@ function initClientEvent() {
    * @description: 中转服务连接失败
    */
   client.on("connect_error", (error) => {
-    transitConnectionError =
-      (error && error.message) || "连接中转服务器失败";
+    transitConnectionError = (error && error.message) || "连接中转服务器失败";
     console.error(`==> 中转服务 Connect Error: ${transitConnectionError}`);
     sendMainWindow("clientConnection", false);
     emitConnectionStatus();

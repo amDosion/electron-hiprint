@@ -1,11 +1,25 @@
 const { app } = require("electron");
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
+const fs = require("fs");
 
 // 创建或打开数据库
 let dbPath = path.join(__dirname, "database.sqlite");
 if (app.isPackaged) {
-  dbPath = path.join(app.getAppPath(), "../", "database.sqlite");
+  // 打包态：DB 存用户数据目录（可写、不随安装/升级被清除），
+  // 而非安装目录 resources/（只读、卸载即丢、升级被覆盖）
+  const userDbPath = path.join(app.getPath("userData"), "database.sqlite");
+  const legacyDbPath = path.join(app.getAppPath(), "../", "database.sqlite");
+  // 一次性迁移：旧安装目录已有数据且新位置尚无时复制过去（保留旧文件作备份，迁移失败不阻断启动）
+  if (fs.existsSync(legacyDbPath) && !fs.existsSync(userDbPath)) {
+    try {
+      fs.copyFileSync(legacyDbPath, userDbPath);
+      console.log("database migrated to userData:", userDbPath);
+    } catch (err) {
+      console.error("database migration failed", err);
+    }
+  }
+  dbPath = userDbPath;
 }
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
