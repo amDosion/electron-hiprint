@@ -4,8 +4,44 @@ const fs = require("fs");
 const path = require("path");
 
 const repoRoot = path.resolve(__dirname, "../../..");
-const files = ["main.js", "src/set.js", "src/print.js", "src/render.js", "src/printLog.js"];
+const files = [
+  "main.js",
+  "src/set.js",
+  "src/print.js",
+  "src/render.js",
+  "src/printLog.js",
+];
 const risks = [];
+
+// Electron 沙箱化 preload 仅能 require 这一受限子集（其余 Node CommonJS 模块会被阻断）
+const SANDBOX_SAFE_PRELOAD_MODULES = new Set([
+  "electron",
+  "events",
+  "timers",
+  "timers/promises",
+  "url",
+]);
+
+// 解析窗口定义里的 preload 路径并检测它是否仍 require 被沙箱阻断的模块
+function findSandboxBlockedPreloadRequires(windowFile, windowContent) {
+  const match = windowContent.match(
+    /preload:\s*path\.join\(\s*__dirname\s*,\s*["'`]([^"'`]+)["'`]\s*\)/,
+  );
+  if (!match) return null;
+  const preloadPath = path.resolve(
+    path.dirname(path.join(repoRoot, windowFile)),
+    match[1],
+  );
+  if (!fs.existsSync(preloadPath)) return null;
+  const preloadContent = fs.readFileSync(preloadPath, "utf8");
+  const requireRe = /require\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
+  const blocked = [];
+  let m;
+  while ((m = requireRe.exec(preloadContent)) !== null) {
+    if (!SANDBOX_SAFE_PRELOAD_MODULES.has(m[1])) blocked.push(m[1]);
+  }
+  return blocked.length ? { preloadPath, blocked } : null;
+}
 
 for (const relativePath of files) {
   const content = fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -16,16 +52,26 @@ for (const relativePath of files) {
       file: relativePath,
       detail:
         'path.join("file://", ...) creates invalid Windows URLs such as .\\file:\\C:\\..., leaving packaged windows blank.',
-      });
-  }
-  if (/preload:\s*path\.join\(__dirname/.test(content) && !/sandbox:\s*false/.test(content)) {
-    risks.push({
-      id: "RUNTIME-PRELOAD-SANDBOX-BLOCKS-COMMONJS",
-      severity: "critical",
-      file: relativePath,
-      detail:
-        "Electron 42 sandboxed preloads cannot run the existing CommonJS preload modules that require electron-store or package metadata.",
     });
+  }
+  if (
+    /preload:\s*path\.join\(__dirname/.test(content) &&
+    !/sandbox:\s*false/.test(content)
+  ) {
+    const blocked = findSandboxBlockedPreloadRequires(relativePath, content);
+    if (blocked) {
+      const preloadRel = path
+        .relative(repoRoot, blocked.preloadPath)
+        .replace(/\\/g, "/");
+      risks.push({
+        id: "RUNTIME-PRELOAD-SANDBOX-BLOCKS-COMMONJS",
+        severity: "critical",
+        file: relativePath,
+        detail: `Sandbox is enabled but preload ${preloadRel} still requires sandbox-blocked module(s): ${blocked.blocked.join(
+          ", ",
+        )}. Migrate these to synchronous IPC.`,
+      });
+    }
   }
 }
 
@@ -42,7 +88,8 @@ if (!fs.existsSync(helperPath)) {
     risks.push({
       id: "RUNTIME-ASSET-URL-HELPER-NOT-USING-PATH-TO-FILE-URL",
       severity: "high",
-      detail: "The shared helper must use node:url pathToFileURL for Windows-safe file URLs.",
+      detail:
+        "The shared helper must use node:url pathToFileURL for Windows-safe file URLs.",
     });
   }
 }
