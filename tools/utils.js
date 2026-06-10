@@ -280,7 +280,8 @@ function addressAll() {
   return new Promise((resolve) => {
     address.mac(function(err, mac) {
       if (err) {
-        resolve({ ip: address.ip(), ipv6: address.ipv6(), mac: err });
+        // 获取失败返回空串而非 Error 对象，避免 mac 被填成序列化错误对象透传到 UI 和客户端
+        resolve({ ip: address.ip(), ipv6: address.ipv6(), mac: "" });
       } else {
         resolve({ ip: address.ip(), ipv6: address.ipv6(), mac });
       }
@@ -520,6 +521,42 @@ function createIppTargetError(message) {
   const error = new Error(message);
   error.name = "InvalidIppTarget";
   return error;
+}
+
+/**
+ * @description: 校验对端可控的 http(s) 下载地址，拦截 SSRF（如 url_pdf 打印类型）。
+ *   仅放行 http/https，拒绝 localhost 与内网/保留 IPv4/IPv6 字面量地址。
+ *   注意：此处只校验 URL 中的字面量主机；域名解析到内网的 DNS 重绑定由调用方
+ *   在连接前对解析后的 IP 再做一次 isBlockedIPv4/isBlockedIPv6 校验。
+ * @param {string} rawUrl 待校验的 URL
+ * @return {Error|null} 不合法时返回 Error，合法返回 null
+ */
+function getHttpUrlTargetError(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return new Error("下载地址格式无效");
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    return new Error("仅允许 http/https 协议");
+  }
+  const hostname = normalizeHost(parsed.hostname);
+  if (
+    !hostname ||
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost")
+  ) {
+    return new Error("下载地址不能指向本机地址");
+  }
+  const ipVersion = net.isIP(hostname);
+  if (ipVersion === 4 && isBlockedIPv4(hostname)) {
+    return new Error("下载地址不能指向内网或保留 IPv4 地址");
+  }
+  if (ipVersion === 6 && isBlockedIPv6(hostname)) {
+    return new Error("下载地址不能指向内网或保留 IPv6 地址");
+  }
+  return null;
 }
 
 function normalizeExtension(value) {
@@ -855,9 +892,8 @@ function initServeEvent(server) {
     const auth = socket.handshake && socket.handshake.auth;
     const providedToken = auth && auth.token;
     if (!providedToken || token !== providedToken) {
-      console.log(
-        `==> 插件端 Authentication error: ${socket.id}, token: ${providedToken}`,
-      );
+      // 不记录对端提交的 token，避免日志成为暴力破解 oracle / 泄露凭据
+      console.log(`==> 插件端 Authentication error: ${socket.id}`);
       const err = new Error("Authentication error");
       err.data = {
         content: "Token 错误",
@@ -1533,4 +1569,7 @@ module.exports = {
   getCurrentPrintStatusByName,
   getMachineId,
   showAboutDialog,
+  getHttpUrlTargetError,
+  isBlockedIPv4,
+  isBlockedIPv6,
 };

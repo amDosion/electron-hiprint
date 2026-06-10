@@ -36,15 +36,25 @@ const paths = {
   ),
   androidApiClient: path.join(
     sourceRoot,
-    "UrovoShipmentScanner/app/src/main/java/com/urovo/shipment/api/ApiClient.kt",
+    "UrovoShipmentScanner/app/src/main/java/api/ApiClient.kt",
   ),
 };
 
+// 这是跨项目诊断，会引用 E:\Source_code 下的兄弟仓库（transit / vue-admin / 插件 / Android）。
+// 兄弟仓库可能未检出，或其内部文件被移动/重命名（如 Android 端 ApiClient.kt 曾从
+// com/urovo/shipment/api 扁平化到 java/api）。此时必须显式建模为 null：
+// 既不崩溃整个诊断，也不能把"源不可用"静默当成"未发现风险"（那会谎报安全）。
 function read(file) {
-  return fs.readFileSync(file, "utf8");
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err; // 权限等非"文件不存在"错误向上抛，避免掩盖真实环境问题
+  }
 }
 
 function lineOf(text, pattern) {
+  if (text === null) return null;
   const lines = text.split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
     if (pattern.test(lines[index])) return index + 1;
@@ -52,7 +62,16 @@ function lineOf(text, pattern) {
   return null;
 }
 
-function result(id, severity, observed, evidence) {
+// requiredSources: [{ name, text }]。任一 text 为 null → source_unavailable，
+// 与 RISK_REPRODUCED / not_observed 并列为三态，绝不混淆"缺源"与"安全"。
+function result(id, severity, requiredSources, predicate, evidence) {
+  const missing = requiredSources
+    .filter((source) => source.text === null)
+    .map((source) => source.name);
+  if (missing.length > 0) {
+    return { id, severity, status: "source_unavailable", missing, evidence };
+  }
+  const observed = predicate();
   return {
     id,
     severity,
@@ -73,19 +92,26 @@ const vuePluginSocket = read(paths.vuePluginSocket);
 const androidApiClient = read(paths.androidApiClient);
 
 let runtimeToken = "";
-try {
-  runtimeToken = JSON.parse(transitRuntimeConfig).token || "";
-} catch {
-  // 运行时配置为非法 JSON 时保留空串默认值（下游检查对空 token 安全）。
+if (transitRuntimeConfig !== null) {
+  try {
+    runtimeToken = JSON.parse(transitRuntimeConfig).token || "";
+  } catch {
+    // 运行时配置为非法 JSON 时保留空串默认值（下游检查对空 token 安全）。
+  }
 }
 
 const checks = [
   result(
     "TRANSIT-SEC-TOKEN-EXPOSED-TO-BROWSER",
     "high",
-    /"token":\s*_decrypt_secret\(record\.token_cipher\)/.test(
-      vueHiprintRouter,
-    ) &&
+    [
+      { name: "vueHiprintRouter", text: vueHiprintRouter },
+      { name: "vuePrintService", text: vuePrintService },
+    ],
+    () =>
+      /"token":\s*_decrypt_secret\(record\.token_cipher\)/.test(
+        vueHiprintRouter,
+      ) &&
       /getDefaultHiprintRemotePrintConfigApi/.test(vuePrintService) &&
       /hiprint\.connectTransit\([\s\S]*token/.test(vuePrintService),
     {
@@ -106,9 +132,14 @@ const checks = [
   result(
     "TRANSIT-SEC-PLUGIN-DIRECT-CREDENTIAL-SURFACE",
     "high",
-    /connectTransit\(\s*options:\s*TransitConnectOptions/.test(
-      vuePluginGlobal,
-    ) &&
+    [
+      { name: "vuePluginGlobal", text: vuePluginGlobal },
+      { name: "vuePluginSocket", text: vuePluginSocket },
+    ],
+    () =>
+      /connectTransit\(\s*options:\s*TransitConnectOptions/.test(
+        vuePluginGlobal,
+      ) &&
       /ws\.setHost\(host,\s*token/.test(vuePluginGlobal) &&
       /token:\s*"vue3-print"/.test(vuePluginSocket),
     {
@@ -133,9 +164,11 @@ const checks = [
   result(
     "TRANSIT-SEC-SHARED-TOKEN-CONTROLS-PRIVILEGED-EVENTS",
     "high",
-    /io\.use\([\s\S]*tokenMatches\(token,\s*socket\.handshake\.auth\?\.token\)/.test(
-      transitIndex,
-    ) &&
+    [{ name: "transitIndex", text: transitIndex }],
+    () =>
+      /io\.use\([\s\S]*tokenMatches\(token,\s*socket\.handshake\.auth\?\.token\)/.test(
+        transitIndex,
+      ) &&
       /printEvents\.forEach\(\(event\)/.test(transitIndex) &&
       /socket\.on\(fileExportEvent/.test(transitIndex),
     {
@@ -152,7 +185,12 @@ const checks = [
   result(
     "TRANSIT-SEC-DEFAULT-OR-WEAK-TOKEN",
     "high",
-    /token:\s*'vue-plugin-hiprint'/.test(transitConfig) ||
+    [
+      { name: "transitConfig", text: transitConfig },
+      { name: "transitRuntimeConfig", text: transitRuntimeConfig },
+    ],
+    () =>
+      /token:\s*'vue-plugin-hiprint'/.test(transitConfig) ||
       /^(hiprint|vue-plugin-hiprint|vue3-print)$/i.test(runtimeToken),
     {
       files: [
@@ -169,7 +207,12 @@ const checks = [
   result(
     "TRANSIT-SEC-TOKEN-LOGGING",
     "medium",
-    /token:\s*%s/.test(transitIndex) ||
+    [
+      { name: "transitIndex", text: transitIndex },
+      { name: "electronUtils", text: electronUtils },
+    ],
+    () =>
+      /token:\s*%s/.test(transitIndex) ||
       /token:\s*\$\{providedToken\}/.test(electronUtils),
     {
       files: [
@@ -186,7 +229,13 @@ const checks = [
   result(
     "TRANSIT-SEC-EPHEMERAL-SOCKET-ID-AS-DEVICE-ID",
     "medium",
-    /CLIENT\.get\(sToken\)\[socket\.id\]/.test(transitIndex) &&
+    [
+      { name: "transitIndex", text: transitIndex },
+      { name: "vueMobilePrintRouter", text: vueMobilePrintRouter },
+      { name: "androidApiClient", text: androidApiClient },
+    ],
+    () =>
+      /CLIENT\.get\(sToken\)\[socket\.id\]/.test(transitIndex) &&
       /socket\s*\.to\(options\.client\)/.test(transitIndex) &&
       /_find_printer_target/.test(vueMobilePrintRouter) &&
       /getMobilePrinters/.test(androidApiClient),
@@ -216,11 +265,24 @@ const checks = [
 ];
 
 const observed = checks.filter((check) => check.status === "RISK_REPRODUCED");
-
-console.log(
-  JSON.stringify({ sourceRoot, observed: observed.length, checks }, null, 2),
+const unavailable = checks.filter(
+  (check) => check.status === "source_unavailable",
 );
 
+console.log(
+  JSON.stringify(
+    {
+      sourceRoot,
+      observed: observed.length,
+      unavailable: unavailable.length,
+      checks,
+    },
+    null,
+    2,
+  ),
+);
+
+// 退出码只反映"真实复现的风险"。源不可用是环境状态，已显式列出，不应让诊断红掉。
 if (observed.length > 0) {
   process.exitCode = 1;
 }
