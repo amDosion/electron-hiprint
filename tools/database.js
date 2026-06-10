@@ -57,6 +57,22 @@ db.serialize(() => {
       }
     },
   );
+
+  // 创建软件日志记录表（与打印日志统一落 sqlite；写入见 src/software-log-store.js）
+  db.run(`
+    CREATE TABLE IF NOT EXISTS software_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      day TEXT,
+      ts TEXT,
+      level TEXT,
+      msg TEXT
+    )
+  `);
+
+  // 按天查询 / DISTINCT 列日期用索引（对齐软件日志窗口的日期选择）
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_software_logs_day ON software_logs(day)`,
+  );
 });
 
 module.exports = db;

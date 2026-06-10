@@ -74,6 +74,11 @@ Object.assign(console, electronLog.functions);
 electronLog.transports.file.resolvePathFn = () =>
   path.join(logPath, dayjs().format("YYYY-MM-DD.log"));
 
+// 软件日志双写到 sqlite：软件日志窗口数据源以 sqlite 为准（与打印日志统一），
+// 文本 transport 保留作崩溃态同步落盘兜底。transport 内部容错且禁用 console。
+const softwareLogStore = require("./src/software-log-store");
+electronLog.transports.sqlite = softwareLogStore.appendFromTransport;
+
 // 监听崩溃事件
 process.on("uncaughtException", (error) => {
   console.error(error);
