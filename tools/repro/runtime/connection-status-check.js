@@ -11,7 +11,9 @@ function readText(relativePath) {
 
 const mainJs = readText("main.js");
 const preloadIndexJs = readText("src/preload/index.js");
-const indexHtml = readText("assets/index.html");
+// 渲染层迁移到 Vue SFC 后，主窗口真源是 App.vue；assets/index.html 已是 Vite 压缩单文件
+// 产物（标识符被改名/内联），对其做源级断言会假阳性，故渲染层检查一律读 SFC 源。
+const indexAppVue = readText("src/renderer/app/windows/index/App.vue");
 const utilsJs = readText("tools/utils.js");
 const setJs = readText("src/set.js");
 const risks = [];
@@ -41,17 +43,17 @@ expect(
 );
 
 expect(
-  /ipc\.send\(\s*["']getConnectionStatus["']/.test(indexHtml) &&
-    /ipc\.on\(\s*["']connectionStatus["']/.test(indexHtml),
+  /ipc\.send\(\s*["']getConnectionStatus["']/.test(indexAppVue) &&
+    /ipc\.on\(\s*["']connectionStatus["']/.test(indexAppVue),
   "CONNECTION-STATUS-RENDERER-SNAPSHOT-MISSING",
   "high",
   "The main window should request an initial status snapshot after registering IPC listeners, so it does not depend only on earlier socket events.",
 );
 
 expect(
-  /updateConnectionStatus/.test(indexHtml) &&
-    /localClientCount/.test(indexHtml) &&
-    /transitConnected/.test(indexHtml),
+  /updateConnectionStatus/.test(indexAppVue) &&
+    /localClientCount/.test(indexAppVue) &&
+    /transitConnected/.test(indexAppVue),
   "CONNECTION-STATUS-RENDERER-MERGE-MISSING",
   "high",
   "The renderer should merge the snapshot fields into the same state used by subsequent socket events.",
@@ -66,8 +68,8 @@ expect(
 );
 
 expect(
-  /本地客户端|外部连接/.test(indexHtml) &&
-    !/本地连接：\s*[\r\n\s]*<span>[\s\S]*\? `已建立/.test(indexHtml),
+  /本地客户端|外部连接/.test(indexAppVue) &&
+    !/本地连接：\s*[\r\n\s]*<span>[\s\S]*\? `已建立/.test(indexAppVue),
   "LOCAL-CONNECTION-LABEL-MISLEADING",
   "medium",
   'The main window should not label external socket client count as "本地连接：未连接", because the local service can be running with zero connected web/plugin clients.',

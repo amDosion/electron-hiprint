@@ -173,6 +173,29 @@ function startLocalServices() {
   if (localServicesStarted) return;
   localServicesStarted = true;
 
+  // 连接模式互斥：配置了中转就只走中转客户端，未配置就只走本地服务端。
+  // 二者不共存——本地服务端与中转客户端各自持有完整的 socket 事件（含 file.export），
+  // 激活哪一侧由“是否配置中转”唯一决定，无旧版“本地常驻 + 中转叠加”的双分支。
+  const transitConfigured =
+    store.get("connectTransit") &&
+    store.get("transitUrl") &&
+    store.get("transitToken");
+
+  if (transitConfigured) {
+    global.SOCKET_CLIENT = ioClient(store.get("transitUrl"), {
+      transports: ["websocket"],
+      query: {
+        client: "electron-hiprint",
+      },
+      auth: {
+        token: store.get("transitToken"),
+      },
+    });
+
+    initClientEvent();
+    return;
+  }
+
   if (!localSocketEventsInitialized) {
     initServeEvent(ioServer);
     localSocketEventsInitialized = true;
@@ -189,24 +212,6 @@ function startLocalServices() {
       );
     },
   );
-
-  if (
-    store.get("connectTransit") &&
-    store.get("transitUrl") &&
-    store.get("transitToken")
-  ) {
-    global.SOCKET_CLIENT = ioClient(store.get("transitUrl"), {
-      transports: ["websocket"],
-      query: {
-        client: "electron-hiprint",
-      },
-      auth: {
-        token: store.get("transitToken"),
-      },
-    });
-
-    initClientEvent();
-  }
 }
 
 /**
