@@ -52,9 +52,6 @@ const searchData = reactive<{
   status: '',
 })
 
-// 表格高度：撑满窗口减去筛选卡 + 分页 + 间距（与原静态实现一致）
-const tableHeight = 'calc(100vh - 51px - 42px - 16px)'
-
 // 列配置：status/clientType 列由作用域插槽渲染语义徽章，故不再设 formatter（其余列保留格式化）
 const columns: ColumnConfig[] = [
   {
@@ -213,36 +210,38 @@ onMounted(() => {
       </div>
     </el-form>
 
-    <el-table
-      class="table"
-      :data="logs"
-      :height="tableHeight"
-      border
-      stripe
-      @sort-change="sortChange"
-    >
-      <el-table-column v-for="column in columns" :key="column.prop" v-bind="column">
-        <template v-if="column.prop === 'action'" #default="{ row }">
-          <el-button
-            :disabled="row.rePrintAble === 0 || !rePrintAble"
-            type="text"
-            @click="handleRePrint(row)"
-          >
-            重打
-          </el-button>
-        </template>
-        <template v-else-if="column.prop === 'status'" #default="{ row }">
-          <span class="status-pill" :class="'status-' + row.status">
-            <span class="pill-dot"></span>{{ row.status === 'success' ? '成功' : '失败' }}
-          </span>
-        </template>
-        <template v-else-if="column.prop === 'clientType'" #default="{ row }">
-          <span class="type-pill" :class="'type-' + row.clientType">
-            {{ row.clientType === 'local' ? '本地' : '中转' }}
-          </span>
-        </template>
-      </el-table-column>
-    </el-table>
+    <div class="table-wrap">
+      <el-table
+        class="table"
+        :data="logs"
+        height="100%"
+        border
+        stripe
+        @sort-change="sortChange"
+      >
+        <el-table-column v-for="column in columns" :key="column.prop" v-bind="column">
+          <template v-if="column.prop === 'action'" #default="{ row }">
+            <el-button
+              :disabled="row.rePrintAble === 0 || !rePrintAble"
+              type="text"
+              @click="handleRePrint(row)"
+            >
+              重打
+            </el-button>
+          </template>
+          <template v-else-if="column.prop === 'status'" #default="{ row }">
+            <span class="status-pill" :class="'status-' + row.status">
+              <span class="pill-dot"></span>{{ row.status === 'success' ? '成功' : '失败' }}
+            </span>
+          </template>
+          <template v-else-if="column.prop === 'clientType'" #default="{ row }">
+            <span class="type-pill" :class="'type-' + row.clientType">
+              {{ row.clientType === 'local' ? '本地' : '中转' }}
+            </span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
 
     <div class="pagination">
       <el-pagination
@@ -300,13 +299,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* 纵向布局：窗口自身不滚动；搜索卡与分页固定，表格区占据剩余空间并在内部滚动。 */
 #app {
+  height: 100vh;
   padding: 16px;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* ---------------- 筛选卡片 ---------------- */
 .search-form {
+  flex: 0 0 auto;
   background: var(--pl-card);
   border: 1px solid var(--pl-border);
   border-radius: var(--pl-radius-card);
@@ -430,9 +435,17 @@ body {
 }
 
 /* ---------------- 表格卡片 ---------------- */
+/* 表格区占据搜索卡与分页之间的剩余高度；min-height:0 允许其在 flex 容器内收缩，
+   使 el-table 的 height="100%" 解析出确定像素高度，从而由表体内部滚动而非整窗滚动。 */
+.table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 12px;
+}
+
 .table.el-table {
   width: 100%;
-  margin-bottom: 12px;
+  height: 100%;
   border-radius: var(--pl-radius-card);
   border: 1px solid var(--pl-border);
   box-shadow: var(--pl-shadow);
@@ -552,6 +565,7 @@ body {
 
 /* ---------------- 分页 ---------------- */
 .pagination {
+  flex: 0 0 auto;
   display: flex;
   justify-content: flex-end;
 }
