@@ -1,14 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { Printer, View, Setting, DocumentCopy } from '@element-plus/icons-vue'
+import { requireBridge } from '@/shared/bridge'
 
-// Electron preload 桥接（src/preload/index.js）。缺失说明窗口未经正确 preload 加载，提前失败。
-const indexBridge = window.hiprintIndex
-if (!indexBridge) {
-  throw new Error('hiprintIndex bridge 未注入：请确认窗口经 preload/index.js 加载')
-}
-// 显式标注为非可选类型，使后续闭包内引用无需重复收窄
-const ipc: HiprintIndexBridge = indexBridge
+// Electron preload 桥接（src/preload/index.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintIndex, 'hiprintIndex', 'preload/index.js')
 
 document.title = ipc.title
 
@@ -44,8 +40,10 @@ function handleTriggerView(): void {
   displayPrivate.value = !displayPrivate.value
 }
 
-// 复制始终使用真实值（而非遮罩后的展示值）
+// 复制始终使用真实值（而非遮罩后的展示值）；空值（IPC 回填前/获取失败）直接忽略，
+// 避免写入空串并谎报“复制成功”。
 function handleCopy(value: string): void {
+  if (!value) return
   ipc.writeText(value)
   ipc.send('notification', {
     title: '复制成功',
@@ -83,7 +81,9 @@ onMounted(() => {
   ipc.send('getAddress')
   ipc.on('address', (_event, arg) => {
     const a = (arg ?? {}) as { ip?: string; port?: number; mac?: string }
-    ipAddress.value = `http://${a.ip}:${a.port || 17521}`
+    // ip 兜底：无可用网卡时主进程 address.ip() 可能返回 undefined，避免渲染出 http://undefined:port
+    const ip = a.ip || '127.0.0.1'
+    ipAddress.value = `http://${ip}:${a.port || 17521}`
     macAddress.value = a.mac || ''
   })
   ipc.on('serverConnection', (_event, arg) => {

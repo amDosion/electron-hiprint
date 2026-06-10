@@ -1,14 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { Search, Refresh, FolderOpened } from '@element-plus/icons-vue'
+import { requireBridge } from '@/shared/bridge'
 
-// Electron preload 桥接（src/preload/softwareLog.js）。缺失说明窗口未经正确 preload 加载，提前失败。
-const softwareLogBridge = window.hiprintSoftwareLog
-if (!softwareLogBridge) {
-  throw new Error('hiprintSoftwareLog bridge 未注入：请确认窗口经 preload/softwareLog.js 加载')
-}
-// 显式标注为非可选类型，使后续 async/闭包内引用无需重复收窄（const 经可选属性读出时闭包不保留收窄）
-const ipc: HiprintSoftwareLogBridge = softwareLogBridge
+// Electron preload 桥接（src/preload/softwareLog.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintSoftwareLog, 'hiprintSoftwareLog', 'preload/softwareLog.js')
 
 interface DisplayLine {
   ts: string
@@ -51,7 +47,10 @@ const filteredLines = computed<DisplayLine[]>(() => {
     return lineLevel === level
   }
 
-  const re = kw ? new RegExp('(' + escapeRegExp(kw) + ')', 'gi') : null
+  // 高亮作用在“已 HTML 转义”的文本上，故正则须用“转义后的关键字”构建，
+  // 否则含 < > & " ' 的关键字（如 <info>）虽通过筛选却高亮不到（基准不一致）。
+  // 筛选仍用原始 msg（下方 indexOf），保持“哪些行显示”这一行为完全不变。
+  const re = kw ? new RegExp('(' + escapeRegExp(escapeHtml(kw)) + ')', 'gi') : null
 
   const result: DisplayLine[] = []
   lines.value.forEach((line) => {

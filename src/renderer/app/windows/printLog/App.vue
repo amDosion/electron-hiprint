@@ -1,15 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, toRaw } from 'vue'
 import dayjs from 'dayjs'
 import { cloneDeep } from 'lodash-es'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import { requireBridge } from '@/shared/bridge'
 
-// Electron preload 桥接（src/preload/printLog.js）。缺失说明窗口未经正确 preload 加载，提前失败。
-const printLogBridge = window.hiprintPrintLog
-if (!printLogBridge) {
-  throw new Error('hiprintPrintLog bridge 未注入：请确认窗口经 preload/printLog.js 加载')
-}
-const ipc: HiprintPrintLogBridge = printLogBridge
+// Electron preload 桥接（src/preload/printLog.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintPrintLog, 'hiprintPrintLog', 'preload/printLog.js')
 
 // rePrint 总开关（preload 启动时同步读取，全程不变）
 const rePrintAble = ipc.rePrintAble
@@ -161,7 +158,10 @@ function clearLogs(): void {
 }
 
 function handleRePrint(row: PrintLogRow): void {
-  ipc.send('reprint', row)
+  // row 来自 el-table :data="logs"（深 ref），是 Vue 响应式 Proxy；直接 send 会触发结构化克隆
+  // 抛 "An object could not be cloned"，导致重打永远发不出去。toRaw 解包回原始纯对象再发，
+  // 负载结构与主进程 rePrint（按 data.id 读取）的契约不变。
+  ipc.send('reprint', toRaw(row))
 }
 
 onMounted(() => {

@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import type { FormInstance } from 'element-plus'
+import { requireBridge } from '@/shared/bridge'
 
-// Electron preload 桥接（src/preload/set.js）。缺失说明窗口未经正确 preload 加载，提前失败。
-const setBridge = window.hiprintSet
-if (!setBridge) {
-  throw new Error('hiprintSet bridge 未注入：请确认窗口经 preload/set.js 加载')
-}
-const ipc: HiprintSetBridge = setBridge
+// Electron preload 桥接（src/preload/set.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintSet, 'hiprintSet', 'preload/set.js')
 
 interface FormItem {
   label: string
@@ -35,6 +32,7 @@ interface SetFormData {
   transitUrl: string
   transitToken: string
   allowNotify: boolean
+  disabledGpu: boolean
   closeType: string
   logPath: string
   pdfPath: string
@@ -59,6 +57,7 @@ const DEFAULTS: SetFormData = {
   transitUrl: '',
   transitToken: '',
   allowNotify: false,
+  disabledGpu: false,
   closeType: 'tray',
   logPath: '',
   pdfPath: '',
@@ -303,7 +302,6 @@ const formOptions = computed(() => ({
     },
     {
       label: '　',
-      prop: 'connectTest',
       is: 'el-button',
       event: { click: handleTest },
       content: '测试连接',
@@ -451,6 +449,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  ipc.removeAllListeners('getPrintersList')
   ipc.removeAllListeners('openDialog')
 })
 </script>

@@ -219,12 +219,15 @@ async function capturePage(event, data) {
         data.templateId
       }】 获取 png 成功`,
     );
-    socket.emit("render-jpeg-success", {
-      msg: `获取 jpeg 成功`,
-      templateId: data.templateId,
-      buffer,
-      replyId: data.replyId,
-    });
+    // 成功分支与失败分支(234)对齐空值守卫：截图期间本地 socket 瞬断时 socket 为 undefined，
+    // 直接 emit 会抛 TypeError 并被误记为失败；守卫后静默跳过（无对端可收）。
+    socket &&
+      socket.emit("render-jpeg-success", {
+        msg: `获取 jpeg 成功`,
+        templateId: data.templateId,
+        buffer,
+        replyId: data.replyId,
+      });
   } catch (error) {
     console.log(
       `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模版 【${
@@ -280,11 +283,14 @@ function printToPDF(event, data) {
           () => {},
         );
       }
-      socket.emit("render-pdf-success", {
-        templateId: data.templateId,
-        buffer,
-        replyId: data.replyId,
-      });
+      // 成功分支与失败分支(295)对齐空值守卫：渲染期间 socket 瞬断时为 undefined，
+      // 直接 emit 会抛 TypeError 并把成功误记为失败；守卫后静默跳过（无对端可收）。
+      socket &&
+        socket.emit("render-pdf-success", {
+          templateId: data.templateId,
+          buffer,
+          replyId: data.replyId,
+        });
     })
     .catch((error) => {
       console.log(
