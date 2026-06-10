@@ -175,34 +175,28 @@ onMounted(() => {
   <el-config-provider :locale="zhCn">
     <el-form :model="searchData" class="search-form" :inline="true" size="small" label-suffix="：">
       <div class="search-container">
-        <div class="search-item">
-          <el-form-item label="时间" prop="timestamp">
-            <el-date-picker
-              v-model="searchData.timestamp"
-              type="datetimerange"
-              range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              value-format="YYYY-MM-DD HH:mm:ss"
-            />
-          </el-form-item>
-        </div>
-        <div class="search-item">
-          <el-form-item label="连接类型" prop="clientType">
-            <el-select v-model="searchData.clientType" placeholder="请选择连接类型" clearable>
-              <el-option label="本地" value="local" />
-              <el-option label="中转" value="transit" />
-            </el-select>
-          </el-form-item>
-        </div>
-        <div class="search-item">
-          <el-form-item label="状态" prop="status">
-            <el-select v-model="searchData.status" placeholder="请选择状态" clearable>
-              <el-option label="成功" value="success" />
-              <el-option label="失败" value="failed" />
-            </el-select>
-          </el-form-item>
-        </div>
+        <el-form-item class="filter-item filter-time" label="时间" prop="timestamp">
+          <el-date-picker
+            v-model="searchData.timestamp"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD HH:mm:ss"
+          />
+        </el-form-item>
+        <el-form-item class="filter-item filter-select" label="连接类型" prop="clientType">
+          <el-select v-model="searchData.clientType" placeholder="请选择" clearable>
+            <el-option label="本地" value="local" />
+            <el-option label="中转" value="transit" />
+          </el-select>
+        </el-form-item>
+        <el-form-item class="filter-item filter-select" label="状态" prop="status">
+          <el-select v-model="searchData.status" placeholder="请选择" clearable>
+            <el-option label="成功" value="success" />
+            <el-option label="失败" value="failed" />
+          </el-select>
+        </el-form-item>
         <div class="search-btns">
           <el-button type="primary" size="small" @click="fetchLogs">搜索</el-button>
           <el-button type="danger" size="small" @click="clearLogs">清空</el-button>
@@ -316,25 +310,25 @@ body {
   border: 1px solid var(--pl-border);
   border-radius: var(--pl-radius-card);
   box-shadow: var(--pl-shadow);
-  padding: 12px 16px 4px;
+  padding: 10px 16px;
   margin-bottom: 16px;
 }
 
+/* 顶部筛选栏：单行，左侧筛选项 + 右侧操作按钮，垂直居中、不换行。 */
 .search-container {
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 4px 16px;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 16px;
 }
 
-.search-item {
+/* 每个筛选项不带额外外边距，整体在一行内居中对齐 */
+.search-form .filter-item.el-form-item {
   display: inline-flex;
-}
-
-.search-form .el-form-item {
-  display: inline-flex;
-  margin-bottom: 8px;
+  align-items: center;
+  margin: 0;
+  flex: 0 0 auto;
 }
 
 .search-form .el-form-item__label {
@@ -342,13 +336,13 @@ body {
   font-weight: 500;
 }
 
-.el-date-editor--datetimerange.el-input,
-.el-date-editor--datetimerange.el-input__wrapper {
-  width: 334px !important;
+.filter-time .el-date-editor.el-input,
+.filter-time .el-date-editor--datetimerange.el-input__wrapper {
+  width: 300px !important;
 }
 
-.search-form .el-select {
-  width: 160px !important;
+.filter-select .el-select {
+  width: 150px !important;
 }
 
 /* 输入控件（element-plus 2.x 边框/底色在 .el-input__wrapper 上，用 inset box-shadow 描边） */
@@ -387,12 +381,13 @@ body {
   color: var(--pl-text-3);
 }
 
-/* 搜索按钮：品牌渐变 */
+/* 操作按钮：推到筛选栏右端 */
 .search-btns {
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
+  flex: 0 0 auto;
 }
 
 .search-btns .el-button--primary {
