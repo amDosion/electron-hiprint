@@ -178,16 +178,6 @@ function setContentSize(event, data) {
 }
 
 /**
- * @description: 渲染进程触发弹出消息框
- * @param {IpcMainEvent} event
- * @param {Object} data https://www.electronjs.org/zh/docs/latest/api/dialog#dialogshowmessageboxbrowserwindow-options
- * @return {void}
- */
-function showMessageBox(event, data) {
-  dialog.showMessageBox(SET_WINDOW, { noLink: true, ...data });
-}
-
-/**
  * @description: 渲染进程触发选择目录
  * @param {IpcMainEvent} event
  * @param {Object} data https://www.electronjs.org/zh/docs/latest/api/dialog#dialogshowopendialogbrowserwindow-options
@@ -220,7 +210,15 @@ function showOpenDialog(event, data) {
  * @return {void}
  */
 function openDirectory(event, data) {
-  shell.openPath(data);
+  // 仅允许打开真实存在的目录：shell.openPath 对文件会按关联程序执行（Windows 上
+  // .exe/.bat 会被运行），这里限定为目录，避免渲染端传入可执行文件路径被执行。
+  try {
+    if (typeof data === "string" && fs.statSync(data).isDirectory()) {
+      shell.openPath(data);
+    }
+  } catch (error) {
+    console.log("openDirectory 拒绝非目录路径:", error?.message);
+  }
 }
 
 /**
@@ -278,7 +276,6 @@ function testTransit(event, data) {
     //   freemem: 94961664, // 可用内存
     // }
 
-    console.log(data);
     // 关闭测试连接
     socket.close();
   });
@@ -299,7 +296,6 @@ function closeSetWindow() {
 function initSetEvent() {
   ipcMain.on("setConfig", setConfig);
   ipcMain.on("setContentSize", setContentSize);
-  ipcMain.on("showMessageBox", showMessageBox);
   ipcMain.on("showOpenDialog", showOpenDialog);
   ipcMain.on("openDirectory", openDirectory);
   ipcMain.on("testTransit", testTransit);
@@ -314,7 +310,6 @@ function initSetEvent() {
 function removeEvent() {
   ipcMain.removeListener("setConfig", setConfig);
   ipcMain.removeListener("setContentSize", setContentSize);
-  ipcMain.removeListener("showMessageBox", showMessageBox);
   ipcMain.removeListener("showOpenDialog", showOpenDialog);
   ipcMain.removeListener("openDirectory", openDirectory);
   ipcMain.removeListener("testTransit", testTransit);

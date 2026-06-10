@@ -1,12 +1,12 @@
 "use strict";
 
 const fs = require("fs");
-const { app, BrowserWindow, ipcMain, dialog, screen } = require("electron");
+const { app, BrowserWindow, ipcMain, screen } = require("electron");
 const path = require("path");
 const { Jimp } = require("jimp");
 const dayjs = require("dayjs");
 
-const { getAssetUrl } = require("./asset-url");
+const { getFileAssetUrl } = require("./asset-url");
 const { store, getCurrentPrintStatusByName } = require("../tools/utils");
 const db = require("../tools/database");
 
@@ -87,7 +87,7 @@ async function createRenderWindow() {
   RENDER_WINDOW = new BrowserWindow(windowOptions);
 
   // 加载打印渲染进程页面
-  RENDER_WINDOW.webContents.loadURL(getAssetUrl("render.html"));
+  RENDER_WINDOW.webContents.loadURL(getFileAssetUrl("render.html"));
 
   RENDER_WINDOW.on("ready-to-show", () => {
     const windowBounds = RENDER_WINDOW.getBounds();
@@ -215,7 +215,7 @@ async function capturePage(event, data) {
       );
     }
     console.log(
-      `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模版 【${
+      `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模版 【${
         data.templateId
       }】 获取 png 成功`,
     );
@@ -227,7 +227,7 @@ async function capturePage(event, data) {
     });
   } catch (error) {
     console.log(
-      `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模版 【${
+      `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模版 【${
         data.templateId
       }】 获取 png 失败`,
     );
@@ -288,7 +288,7 @@ function printToPDF(event, data) {
     })
     .catch((error) => {
       console.log(
-        `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模版 【${
+        `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模版 【${
           data.templateId
         }】 获取 pdf 失败`,
       );
@@ -319,7 +319,6 @@ async function printFun(event, data) {
     socket = SOCKET_CLIENT;
   }
   const printers = await RENDER_WINDOW.webContents.getPrintersAsync();
-  let havePrinter = false;
   let defaultPrinter = data.printer || store.get("defaultPrinter", "");
   let printerError = false;
   printers.forEach((element) => {
@@ -346,13 +345,12 @@ async function printFun(event, data) {
           printerError = true;
         }
       }
-      havePrinter = true;
     }
   });
   if (printerError) {
     const { StatusMsg } = getCurrentPrintStatusByName(defaultPrinter);
     console.log(
-      `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模板 【${
+      `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
         data.templateId
       }】 打印失败，打印机异常，打印机：${
         data.printer
@@ -419,7 +417,7 @@ async function printFun(event, data) {
       if (socket) {
         if (success) {
           console.log(
-            `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模板 【${
+            `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
               data.templateId
             }】 打印成功，打印类型 JSON，打印机：${deviceName}，页数：${
               data.pageNum
@@ -434,7 +432,7 @@ async function printFun(event, data) {
           socket.emit("render-print-success", result);
         } else {
           console.log(
-            `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模板 【${
+            `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
               data.templateId
             }】 打印失败，打印类型 JSON，打印机：${deviceName}，原因：${failureReason}`,
           );
@@ -455,23 +453,12 @@ async function printFun(event, data) {
 }
 
 /**
- * @description: 渲染进程触发弹出消息框
- * @param {IpcMainEvent} event
- * @param {Object} data https://www.electronjs.org/zh/docs/latest/api/dialog#dialogshowmessageboxbrowserwindow-options
- * @return {void}
- */
-function showMessageBox(event, data) {
-  dialog.showMessageBox(SET_WINDOW, { noLink: true, ...data });
-}
-
-/**
  * @description: 初始化事件
  */
 function initEvent() {
   ipcMain.on("capturePage", capturePage);
   ipcMain.on("printToPDF", printToPDF);
   ipcMain.on("print", printFun);
-  ipcMain.on("showMessageBox", showMessageBox);
 }
 
 /**
@@ -482,7 +469,6 @@ function removeEvent() {
   ipcMain.removeListener("capturePage", capturePage);
   ipcMain.removeListener("printToPDF", printToPDF);
   ipcMain.removeListener("print", printFun);
-  ipcMain.removeListener("showMessageBox", showMessageBox);
   RENDER_WINDOW = null;
 }
 

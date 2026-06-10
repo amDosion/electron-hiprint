@@ -5,7 +5,7 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 const { printPdf, printPdfBlob } = require("./pdf-print");
-const { getAssetUrl } = require("./asset-url");
+const { getFileAssetUrl } = require("./asset-url");
 const { store, getCurrentPrintStatusByName } = require("../tools/utils");
 const db = require("../tools/database");
 const dayjs = require("dayjs");
@@ -35,12 +35,7 @@ async function createPrintWindow() {
   PRINT_WINDOW = new BrowserWindow(windowOptions);
 
   // 加载打印渲染进程页面
-  PRINT_WINDOW.webContents.loadURL(getAssetUrl("print.html"));
-
-  // 未打包时打开开发者工具
-  // if (!app.isPackaged) {
-  //   PRINT_WINDOW.webContents.openDevTools();
-  // }
+  PRINT_WINDOW.webContents.loadURL(getFileAssetUrl("print.html"));
 
   // 绑定窗口事件
   initPrintEvent();
@@ -61,7 +56,6 @@ function initPrintEvent() {
       socket = SOCKET_CLIENT;
     }
     const printers = await PRINT_WINDOW.webContents.getPrintersAsync();
-    let havePrinter = false;
     let defaultPrinter = data.printer || store.get("defaultPrinter", "");
     // todo: 打印机状态对照表，根据打印机状态判断是否支持打印
     // win32: https://learn.microsoft.com/en-us/windows/win32/printdocs/printer-info-2
@@ -81,13 +75,12 @@ function initPrintEvent() {
         if (!ENABLE_STATUS.includes(element.status)) {
           printerError = true;
         }
-        havePrinter = true;
       }
     });
     if (printerError) {
       const { StatusMsg } = getCurrentPrintStatusByName(defaultPrinter);
       console.log(
-        `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模板 【${
+        `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
           data.templateId
         }】 打印失败，打印机异常，打印机：${defaultPrinter}, 打印机状态：${StatusMsg}`,
       );
@@ -102,7 +95,8 @@ function initPrintEvent() {
         PRINT_RUNNER_DONE[data.taskId]();
         delete PRINT_RUNNER_DONE[data.taskId];
       }
-      MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+      MAIN_WINDOW &&
+        MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
       return;
     }
     let deviceName = defaultPrinter;
@@ -160,7 +154,7 @@ function initPrintEvent() {
           printPdf(pdfPath, deviceName, data)
             .then(() => {
               console.log(
-                `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模板 【${
+                `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
                   data.templateId
                 }】 打印成功，打印类型：PDF，打印机：${deviceName}，页数：${
                   data.pageNum
@@ -179,7 +173,7 @@ function initPrintEvent() {
             })
             .catch((err) => {
               console.log(
-                `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模板 【${
+                `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
                   data.templateId
                 }】 打印失败，打印类型：PDF，打印机：${deviceName}，原因：${
                   err.message
@@ -204,7 +198,11 @@ function initPrintEvent() {
                 // 删除 task
                 delete PRINT_RUNNER_DONE[data.taskId];
               }
-              MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+              MAIN_WINDOW &&
+                MAIN_WINDOW.webContents.send(
+                  "printTask",
+                  PRINT_RUNNER.isBusy(),
+                );
             });
         })
         .catch((err) => {
@@ -226,7 +224,8 @@ function initPrintEvent() {
             PRINT_RUNNER_DONE[data.taskId]();
             delete PRINT_RUNNER_DONE[data.taskId];
           }
-          MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+          MAIN_WINDOW &&
+            MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
         });
       return;
     }
@@ -236,7 +235,7 @@ function initPrintEvent() {
       printPdf(data.pdf_path, deviceName, data)
         .then(() => {
           console.log(
-            `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模板 【${
+            `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
               data.templateId
             }】 打印成功，打印类型：URL_PDF，打印机：${deviceName}，页数：${
               data.pageNum
@@ -257,7 +256,7 @@ function initPrintEvent() {
         })
         .catch((err) => {
           console.log(
-            `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模板 【${
+            `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
               data.templateId
             }】 打印失败，打印类型：URL_PDF，打印机：${deviceName}，原因：${
               err.message
@@ -278,7 +277,8 @@ function initPrintEvent() {
             // 删除 task
             delete PRINT_RUNNER_DONE[data.taskId];
           }
-          MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+          MAIN_WINDOW &&
+            MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
         });
       return;
     }
@@ -305,7 +305,8 @@ function initPrintEvent() {
           PRINT_RUNNER_DONE[data.taskId]();
           delete PRINT_RUNNER_DONE[data.taskId];
         }
-        MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+        MAIN_WINDOW &&
+          MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
         return;
       }
       let pdfBlob = data.pdf_blob;
@@ -313,7 +314,7 @@ function initPrintEvent() {
       printPdfBlob(pdfBlob, deviceName, data)
         .then(() => {
           console.log(
-            `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模板 【${
+            `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
               data.templateId
             }】 打印成功，打印类型：BLOB_PDF，打印机：${deviceName}，页数：${
               data.pageNum
@@ -334,7 +335,7 @@ function initPrintEvent() {
         })
         .catch((err) => {
           console.log(
-            `${data.replyId ? "中转服务" : "插件端"} ${socket.id} 模板 【${
+            `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
               data.templateId
             }】 打印失败，打印类型：BLOB_PDF，打印机：${deviceName}，原因：${
               err.message
@@ -355,7 +356,8 @@ function initPrintEvent() {
             // 删除 task
             delete PRINT_RUNNER_DONE[data.taskId];
           }
-          MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+          MAIN_WINDOW &&
+            MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
         });
       return;
     }
@@ -422,7 +424,8 @@ function initPrintEvent() {
           // 删除 task
           delete PRINT_RUNNER_DONE[data.taskId];
         }
-        MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+        MAIN_WINDOW &&
+          MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
       },
     );
   });

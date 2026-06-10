@@ -12,8 +12,8 @@ const {
   Notification,
   Tray,
   Menu,
-  shell,
   clipboard,
+  protocol,
 } = require("electron");
 const electronLog = require("electron-log");
 const path = require("path");
@@ -23,7 +23,12 @@ const printSetup = require("./src/print");
 const renderSetup = require("./src/render");
 const setSetup = require("./src/set");
 const printLogSetup = require("./src/printLog");
+const softwareLogSetup = require("./src/softwareLog");
 const { getAssetUrl } = require("./src/asset-url");
+const {
+  registerAssetSchemeAsPrivileged,
+  registerAssetProtocol,
+} = require("./src/asset-protocol");
 const { resolveBuiltinPluginVersion } = require("./src/plugin-sync");
 const { runOnlineUpgrade } = require("./src/online-upgrade-runner");
 const {
@@ -97,6 +102,8 @@ global.SET_WINDOW = null;
 global.RENDER_WINDOW = null;
 // 打印日志窗口
 global.PRINT_LOG_WINDOW = null;
+// 软件日志窗口
+global.SOFTWARE_LOG_WINDOW = null;
 // socket.io 服务端
 global.SOCKET_SERVER = null;
 // socket.io-client 客户端
@@ -226,6 +233,9 @@ async function initialize() {
   // 打开设置窗口
   ipcMain.on("openSetting", openSetWindow);
 
+  // 统一弹出消息框监听（合并原 set.js / render.js 各自注册的同名监听，避免一次消息弹两个框）
+  ipcMain.on("showMessageBox", helper.showMessageBox);
+
   // 获取设备唯一id
   ipcMain.on("getMachineId", (event) => {
     const machineId = getMachineId();
@@ -253,8 +263,16 @@ async function initialize() {
 
   // 供 sandbox 化的 preload 同步读取配置/版本
   // （sandbox 渲染进程的 preload 不能 require electron-store 或 json 文件，改走同步 IPC 保持原同步契约）
+  // 仅放行 preload 实际需要的非敏感键，杜绝渲染进程读取 token/transitToken 等凭据。
+  const STORE_GET_ALLOWED_KEYS = new Set([
+    "mainTitle", // index preload 窗口标题
+    "pluginVersion", // render preload 插件版本
+    "rePrint", // printLog preload 重打开关
+  ]);
   ipcMain.on("hiprint:store-get", (event, key) => {
-    event.returnValue = store.get(key);
+    event.returnValue = STORE_GET_ALLOWED_KEYS.has(key)
+      ? store.get(key)
+      : undefined;
   });
   ipcMain.on("hiprint:app-version", (event) => {
     event.returnValue = app.getVersion();
@@ -296,6 +314,10 @@ async function initialize() {
 
   // 当electron完成初始化
   app.whenReady().then(() => {
+    // 注册 app:// 自定义协议处理器：UI 窗口经此协议从应用内 assets/ 加载，
+    // 拥有真实安全 origin，且 handler 严格限定目录、做路径穿越防护，
+    // 不再使用 file:// 暴露任意本地文件系统访问。必须在加载任何窗口前注册。
+    registerAssetProtocol();
     // 创建浏览器窗口
     createWindow();
     app.on("activate", function() {
@@ -535,7 +557,11 @@ function buildTrayMenuTemplate() {
       label: "软件日志",
       click: () => {
         console.log("==>TRAY 查看软件日志<==");
-        shell.openPath(logPath);
+        if (!SOFTWARE_LOG_WINDOW) {
+          softwareLogSetup();
+        } else {
+          SOFTWARE_LOG_WINDOW.show();
+        }
       },
     },
     {
@@ -604,6 +630,10 @@ async function openSetWindow() {
   }
   return SET_WINDOW;
 }
+
+// 把 app:// 注册为标准 + 安全来源。registerSchemesAsPrivileged 必须在 app ready 之前、
+// 模块顶层同步调用，因此放在 initialize() 之前。
+registerAssetSchemeAsPrivileged();
 
 // 初始化主窗口
 initialize();

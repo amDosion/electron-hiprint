@@ -16,6 +16,7 @@ const dayjs = require("dayjs");
 const path = require("path");
 const db = require("../tools/database");
 const { getAssetUrl } = require("./asset-url");
+const { buildSafeLogQuery } = require("./log-query-guard");
 
 function createPrintLogWindow() {
   const windowOptions = {
@@ -96,42 +97,29 @@ function loadingView(windowOptions) {
  * @param {Function} callback 回调函数
  * @return {void}
  */
-function fetchPrintLogs(event, { condition, params, page, sort }) {
+function fetchPrintLogs(event, payload) {
   const baseQuery = `SELECT id, timestamp, socketId, clientType, printer, templateId, pageNum, status, rePrintAble, errorMessage FROM print_logs`;
   const totalQuery = `SELECT COUNT(*) AS total FROM print_logs`;
-  let query = baseQuery;
-  let total = totalQuery;
 
-  if (condition.length > 0) {
-    query += " WHERE " + condition.join(" AND ");
-    total += " WHERE " + condition.join(" AND ");
+  // 渲染端通过 IPC 传入的 condition/page/sort 经守卫白名单校验后才拼接，
+  // 杜绝任意 SQL 片段、列名注入，并保证 LIMIT/OFFSET 为整数。
+  let safe;
+  try {
+    safe = buildSafeLogQuery(payload);
+  } catch (error) {
+    dialog.showMessageBox(PRINT_LOG_WINDOW, {
+      type: "error",
+      title: "错误",
+      message: "查询条件非法，已拒绝执行",
+      detail: error.message,
+      noLink: true,
+    });
+    return;
   }
 
-  // 排序字段/方向白名单：sort.prop 来自渲染端 IPC，直接拼接进 ORDER BY 存在注入风险
-  const SORTABLE_COLUMNS = [
-    "id",
-    "timestamp",
-    "socketId",
-    "clientType",
-    "printer",
-    "templateId",
-    "pageNum",
-    "status",
-    "rePrintAble",
-    "errorMessage",
-  ];
-  if (sort.prop && sort.order && SORTABLE_COLUMNS.includes(sort.prop)) {
-    const direction =
-      String(sort.order)
-        .replace("ending", "")
-        .toUpperCase() === "ASC"
-        ? "ASC"
-        : "DESC";
-    query += ` ORDER BY ${sort.prop} ${direction}`;
-  }
-
-  query += ` LIMIT ${page.pageSize} OFFSET ${(page.currentPage - 1) *
-    page.pageSize}`;
+  const params = safe.params;
+  const query = `${baseQuery}${safe.whereClause}${safe.orderBy} LIMIT ${safe.limit} OFFSET ${safe.offset}`;
+  const total = `${totalQuery}${safe.whereClause}`;
 
   function allAsync(query, params) {
     return new Promise((resolve, reject) => {
@@ -181,15 +169,36 @@ function clearPrintLogs(event) {
  * @return {void}
  */
 function rePrint(event, data) {
+  // 校验入参：data 必须存在，且 data.id 必须为整数，否则直接拒绝。
+  if (!data || !Number.isInteger(data.id)) {
+    return;
+  }
+
   db.get("SELECT * FROM print_logs WHERE id = ?", [data.id], (err, row) => {
-    if (err) return;
-    PRINT_WINDOW.webContents.send("reprint", {
-      ...JSON.parse(row.data),
-      taskId: undefined,
-      replyId: undefined,
-      clientType: "local",
-      socketId: undefined,
-    });
+    // 查询出错或记录不存在则直接返回，避免对 undefined 取属性。
+    if (err || !row) {
+      return;
+    }
+
+    // row.data 来自历史落库的 JSON 字符串，解析失败时记录并中止，不向窗口发送脏数据。
+    let payload;
+    try {
+      payload = JSON.parse(row.data);
+    } catch (parseError) {
+      console.error("rePrint: 解析打印日志 data 失败", parseError);
+      return;
+    }
+
+    // 打印窗口可能尚未创建或已关闭，发送前确认其存在。
+    if (PRINT_WINDOW && PRINT_WINDOW.webContents) {
+      PRINT_WINDOW.webContents.send("reprint", {
+        ...payload,
+        taskId: undefined,
+        replyId: undefined,
+        clientType: "local",
+        socketId: undefined,
+      });
+    }
   });
 }
 
