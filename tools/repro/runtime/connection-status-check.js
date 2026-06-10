@@ -60,8 +60,7 @@ expect(
 );
 
 expect(
-  /connect_error/.test(utilsJs) &&
-    /emitConnectionStatus/.test(utilsJs),
+  /connect_error/.test(utilsJs) && /emitConnectionStatus/.test(utilsJs),
   "TRANSIT-RUNTIME-CONNECT-ERROR-UNOBSERVED",
   "medium",
   "The runtime transit socket should report connection failures and emit a false status, not leave the UI at its default without diagnostics.",
@@ -76,8 +75,7 @@ expect(
 );
 
 expect(
-  /app\.relaunch\(\)/.test(setJs) &&
-    /保存设置需要重启软件/.test(setJs),
+  /app\.relaunch\(\)/.test(setJs) && /保存设置需要重启软件/.test(setJs),
   "SETTINGS-TRANSIT-RESTART-CONTRACT-MISSING",
   "low",
   "Saving transit settings should keep the explicit restart contract unless runtime reconnect is implemented and verified.",
