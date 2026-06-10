@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="600" viewBox="0 0 1120 600" font-family="'Segoe UI','Microsoft YaHei','PingFang SC',system-ui,sans-serif">
+  <defs>
+    <filter id="s_card" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="4" flood-color="#1A2233" flood-opacity="0.10"/>
+    </filter>
+    <filter id="s_panel" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="16" flood-color="#1A2233" flood-opacity="0.16"/>
+    </filter>
+    <linearGradient id="s_brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4F7BFF"/><stop offset="1" stop-color="#3358E0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1120" height="600" fill="#EEF1F6"/>
+  <text x="40" y="46" font-size="22" font-weight="700" fill="#1A2233">设置 Settings · 重构方案</text>
+  <text x="40" y="70" font-size="13" fill="#6B7382">三个分区（基础/中转/高级）字段全部保留；改为分组卡片 + 行内说明 + 分段切换，窗口仍随内容自适应高度。</text>
+
+  <!-- ===================== BEFORE ===================== -->
+  <text x="40" y="98" font-size="13" font-weight="600" fill="#9AA3B2">当前 BEFORE（基础设置）</text>
+  <g filter="url(#s_panel)">
+    <rect x="40" y="108" width="460" height="440" rx="8" fill="#FFFFFF"/>
+  </g>
+  <!-- element-ui tabs -->
+  <g font-size="13">
+    <text x="64" y="142" fill="#3358E0" font-weight="600">基础设置</text>
+    <text x="140" y="142" fill="#5B6472">中转设置</text>
+    <text x="216" y="142" fill="#5B6472">高级设置</text>
+    <rect x="60" y="150" width="56" height="2" fill="#3358E0"/>
+    <rect x="56" y="151" width="420" height="1" fill="#E6E9F0"/>
+  </g>
+  <g font-size="12">
+    <text x="64" y="178" fill="#5B6472">端口设置</text>
+    <rect x="64" y="186" width="412" height="32" rx="4" fill="#FFFFFF" stroke="#DCDFE6"/>
+    <text x="76" y="206" fill="#1A2233" font-size="13">17521</text>
+
+    <text x="64" y="240" fill="#5B6472">TOKEN 设置</text>
+    <rect x="64" y="248" width="412" height="32" rx="4" fill="#FFFFFF" stroke="#DCDFE6"/>
+    <text x="76" y="268" fill="#9AA3B2" font-size="13">请输入5-32个字符作为TOKEN</text>
+
+    <text x="64" y="302" fill="#5B6472">别名</text>
+    <rect x="64" y="310" width="412" height="32" rx="4" fill="#FFFFFF" stroke="#DCDFE6"/>
+    <text x="76" y="330" fill="#9AA3B2" font-size="13">请输入便于识别的别名</text>
+
+    <text x="64" y="364" fill="#5B6472">日志路径</text>
+    <rect x="64" y="372" width="300" height="32" rx="4" fill="#F5F7FA" stroke="#DCDFE6"/>
+    <rect x="372" y="372" width="104" height="32" rx="4" fill="#FFFFFF" stroke="#DCDFE6"/>
+    <text x="404" y="392" fill="#5B6472" font-size="13">选择</text>
+
+    <text x="64" y="426" fill="#5B6472">PDF 缓存路径</text>
+    <rect x="64" y="434" width="300" height="32" rx="4" fill="#F5F7FA" stroke="#DCDFE6"/>
+    <rect x="372" y="434" width="104" height="32" rx="4" fill="#FFFFFF" stroke="#DCDFE6"/>
+    <text x="404" y="454" fill="#5B6472" font-size="13">选择</text>
+  </g>
+  <rect x="64" y="500" width="200" height="30" rx="4" fill="#3358E0"/>
+  <text x="150" y="520" font-size="13" fill="#FFFFFF" text-anchor="middle">应用</text>
+  <rect x="276" y="500" width="200" height="30" rx="4" fill="#FFFFFF" stroke="#DCDFE6"/>
+  <text x="376" y="520" font-size="13" fill="#5B6472" text-anchor="middle">关闭</text>
+  <g font-size="11" fill="#B23B3B">
+    <text x="40" y="572">· 字段平铺、无分组；下划线 tab 视觉弱；占位说明与正式值难分辨</text>
+  </g>
+
+  <!-- ===================== AFTER ===================== -->
+  <text x="620" y="98" font-size="13" font-weight="600" fill="#3358E0">重构后 AFTER（基础设置）</text>
+  <g filter="url(#s_panel)">
+    <rect x="620" y="108" width="460" height="440" rx="12" fill="#F4F6FA"/>
+  </g>
+  <!-- header -->
+  <text x="644" y="142" font-size="16" font-weight="700" fill="#1A2233">设置</text>
+  <g stroke="#9AA3B2" stroke-width="1.6" stroke-linecap="round">
+    <path d="M1050 130 l12 12 M1062 130 l-12 12"/>
+  </g>
+  <!-- segmented tabs -->
+  <rect x="644" y="156" width="412" height="36" rx="9" fill="#E9EDF4"/>
+  <rect x="648" y="160" width="134" height="28" rx="7" fill="#FFFFFF" filter="url(#s_card)"/>
+  <text x="715" y="178" font-size="13" font-weight="600" fill="#3358E0" text-anchor="middle">基础</text>
+  <text x="850" y="178" font-size="13" fill="#5B6472" text-anchor="middle">中转</text>
+  <text x="988" y="178" font-size="13" fill="#5B6472" text-anchor="middle">高级</text>
+
+  <!-- group: 服务 -->
+  <text x="644" y="222" font-size="11" font-weight="700" letter-spacing="1" fill="#9AA3B2">服务</text>
+  <rect x="644" y="230" width="412" height="120" rx="12" fill="#FFFFFF" filter="url(#s_card)"/>
+  <!-- 端口 -->
+  <text x="664" y="258" font-size="13" fill="#1A2233">端口</text>
+  <text x="664" y="274" font-size="10" fill="#9AA3B2">10000–65535</text>
+  <rect x="916" y="244" width="120" height="30" rx="8" fill="#F4F6FA" stroke="#E6E9F0"/>
+  <text x="976" y="264" font-size="13" font-weight="600" fill="#1A2233" text-anchor="middle" font-family="'Cascadia Mono','Consolas',monospace">17521</text>
+  <rect x="664" y="290" width="372" height="1" fill="#EEF1F6"/>
+  <!-- TOKEN -->
+  <text x="664" y="316" font-size="13" fill="#1A2233">TOKEN</text>
+  <text x="664" y="332" font-size="10" fill="#9AA3B2">5–32 字符，用于本地鉴权</text>
+  <rect x="872" y="302" width="128" height="30" rx="8" fill="#F4F6FA" stroke="#E6E9F0"/>
+  <text x="888" y="321" font-size="13" fill="#9AA3B2" text-anchor="start" font-family="monospace">••••••••</text>
+  <rect x="1008" y="302" width="28" height="30" rx="8" fill="#EAF0FE"/>
+  <g transform="translate(1016,310)" stroke="#3358E0" stroke-width="1.5" fill="none" stroke-linecap="round">
+    <path d="M2 9 a5 5 0 1 1 6 -8"/><path d="M9 0 v4 h-4"/>
+  </g>
+
+  <!-- group: 路径 -->
+  <text x="644" y="378" font-size="11" font-weight="700" letter-spacing="1" fill="#9AA3B2">路径</text>
+  <rect x="644" y="386" width="412" height="116" rx="12" fill="#FFFFFF" filter="url(#s_card)"/>
+  <text x="664" y="412" font-size="13" fill="#1A2233">日志路径</text>
+  <rect x="664" y="420" width="300" height="30" rx="8" fill="#F4F6FA" stroke="#E6E9F0"/>
+  <text x="676" y="439" font-size="11" fill="#5B6472" font-family="monospace">…/electron-hiprint/logs</text>
+  <rect x="972" y="420" width="64" height="30" rx="8" fill="#EAF0FE"/>
+  <text x="1004" y="439" font-size="12" font-weight="600" fill="#3358E0" text-anchor="middle">选择</text>
+  <text x="664" y="468" font-size="13" fill="#1A2233">PDF 缓存路径</text>
+  <rect x="664" y="476" width="300" height="30" rx="8" fill="#F4F6FA" stroke="#E6E9F0"/>
+  <text x="676" y="495" font-size="11" fill="#5B6472" font-family="monospace">…/AppData/…/pdf</text>
+  <rect x="972" y="476" width="64" height="30" rx="8" fill="#EAF0FE"/>
+  <text x="1004" y="495" font-size="12" font-weight="600" fill="#3358E0" text-anchor="middle">选择</text>
+
+  <!-- footer buttons -->
+  <rect x="644" y="510" width="412" height="1" fill="#E6E9F0"/>
+  <rect x="868" y="520" width="84" height="34" rx="9" fill="#FFFFFF" stroke="#DCDFE6"/>
+  <text x="910" y="542" font-size="13" fill="#5B6472" text-anchor="middle">关闭</text>
+  <rect x="964" y="520" width="92" height="34" rx="9" fill="url(#s_brand)"/>
+  <text x="1010" y="542" font-size="13" font-weight="600" fill="#FFFFFF" text-anchor="middle">应用</text>
+
+  <g font-size="11" fill="#2E7D46">
+    <text x="620" y="578">· 字段按「服务 / 路径」分组卡片；分段切换更醒目；每项带行内说明，主操作「应用」加重</text>
+  </g>
+</svg>

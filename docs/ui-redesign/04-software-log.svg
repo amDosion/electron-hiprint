@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="470" viewBox="0 0 1160 470" font-family="'Segoe UI','Microsoft YaHei','PingFang SC',system-ui,sans-serif">
+  <defs>
+    <filter id="g_panel" x="-6%" y="-8%" width="112%" height="116%">
+      <feDropShadow dx="0" dy="6" stdDeviation="16" flood-color="#1A2233" flood-opacity="0.16"/>
+    </filter>
+    <linearGradient id="g_brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4F7BFF"/><stop offset="1" stop-color="#3358E0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1160" height="470" fill="#EEF1F6"/>
+  <text x="40" y="46" font-size="22" font-weight="700" fill="#1A2233">软件日志 Software Log · 新增 UI 查看器</text>
+  <text x="40" y="70" font-size="13" fill="#6B7382">当前：托盘「软件日志」只能 shell.openPath 打开文件夹，逐个用记事本看 .log，无过滤/搜索。新增 in-app 查看器，与打印日志窗口风格一致。</text>
+
+  <!-- ============ BEFORE (folder) ============ -->
+  <text x="40" y="100" font-size="13" font-weight="600" fill="#9AA3B2">当前 BEFORE（打开文件夹）</text>
+  <g filter="url(#g_panel)"><rect x="40" y="110" width="420" height="300" rx="10" fill="#FFFFFF"/></g>
+  <!-- explorer title bar -->
+  <rect x="40" y="110" width="420" height="36" rx="10" fill="#F3F4F7"/>
+  <rect x="40" y="134" width="420" height="12" fill="#F3F4F7"/>
+  <text x="60" y="133" font-size="12" fill="#5B6472" font-family="monospace">C:\Users\…\logs</text>
+  <!-- file rows -->
+  <g font-size="12.5" fill="#1A2233">
+    <g transform="translate(60,168)"><rect width="16" height="13" rx="2" fill="#C9D2E3"/><text x="26" y="11" font-family="monospace">2026-06-10.log</text><text x="320" y="11" fill="#9AA3B2" font-size="11" text-anchor="end">128 KB</text></g>
+    <g transform="translate(60,198)"><rect width="16" height="13" rx="2" fill="#C9D2E3"/><text x="26" y="11" font-family="monospace">2026-06-09.log</text><text x="320" y="11" fill="#9AA3B2" font-size="11" text-anchor="end">96 KB</text></g>
+    <g transform="translate(60,228)"><rect width="16" height="13" rx="2" fill="#C9D2E3"/><text x="26" y="11" font-family="monospace">2026-06-08.log</text><text x="320" y="11" fill="#9AA3B2" font-size="11" text-anchor="end">142 KB</text></g>
+    <g transform="translate(60,258)"><rect width="16" height="13" rx="2" fill="#C9D2E3"/><text x="26" y="11" font-family="monospace">2026-06-07.log</text><text x="320" y="11" fill="#9AA3B2" font-size="11" text-anchor="end">88 KB</text></g>
+    <g transform="translate(60,288)"><rect width="16" height="13" rx="2" fill="#C9D2E3"/><text x="26" y="11" font-family="monospace">2026-06-06.log</text><text x="320" y="11" fill="#9AA3B2" font-size="11" text-anchor="end">110 KB</text></g>
+  </g>
+  <text x="60" y="350" font-size="12" fill="#9AA3B2" font-family="monospace">[2026-06-10 09:12:08] [error] connect ECONN…</text>
+  <text x="60" y="368" font-size="11" fill="#C0C4CC">↑ 双击用记事本打开，纯文本、无高亮/无过滤</text>
+  <text x="40" y="436" font-size="11" fill="#B23B3B">· 无级别过滤、无搜索、无高亮；定位错误要肉眼翻整页文本</text>
+
+  <!-- ============ AFTER (viewer) ============ -->
+  <text x="500" y="100" font-size="13" font-weight="600" fill="#3358E0">新增 AFTER（in-app 查看器）</text>
+  <g filter="url(#g_panel)"><rect x="500" y="110" width="620" height="300" rx="12" fill="#F4F6FA"/></g>
+  <!-- top bar -->
+  <path d="M500 120 a10 10 0 0 1 10 -10 h600 a10 10 0 0 1 10 10 v40 h-620 z" fill="#FFFFFF"/>
+  <rect x="500" y="159" width="620" height="1" fill="#E6E9F0"/>
+  <rect x="516" y="122" width="26" height="26" rx="7" fill="url(#g_brand)"/>
+  <g stroke="#FFFFFF" stroke-width="1.6" fill="none" stroke-linecap="round">
+    <path d="M523 130 h12 M523 135 h12 M523 140 h8"/>
+  </g>
+  <text x="552" y="139" font-size="14" font-weight="700" fill="#1A2233">软件日志</text>
+  <!-- date selector -->
+  <rect x="636" y="124" width="120" height="24" rx="7" fill="#F4F6FA" stroke="#E6E9F0"/>
+  <text x="648" y="140" font-size="11" fill="#5B6472" font-family="monospace">2026-06-10 ▾</text>
+  <!-- level filter -->
+  <rect x="764" y="124" width="78" height="24" rx="7" fill="#F4F6FA" stroke="#E6E9F0"/>
+  <text x="774" y="140" font-size="11" fill="#5B6472">全部级别 ▾</text>
+  <!-- search -->
+  <rect x="850" y="124" width="150" height="24" rx="7" fill="#F4F6FA" stroke="#E6E9F0"/>
+  <g transform="translate(860,131)" stroke="#9AA3B2" stroke-width="1.3" fill="none"><circle cx="4" cy="4" r="4"/><path d="M7 7 l3 3"/></g>
+  <text x="874" y="140" font-size="11" fill="#9AA3B2">搜索关键字</text>
+  <!-- refresh + open folder -->
+  <g transform="translate(1012,130)" stroke="#7A8396" stroke-width="1.5" fill="none" stroke-linecap="round"><path d="M11 5 a5 5 0 1 0 1 4"/><path d="M11 1 v4 h-4"/></g>
+  <g transform="translate(1040,130)" stroke="#7A8396" stroke-width="1.5" fill="none" stroke-linejoin="round"><path d="M0 3 h5 l2 2 h9 v8 h-16 z"/></g>
+
+  <!-- log console -->
+  <rect x="516" y="172" width="588" height="194" rx="10" fill="#FBFCFE" stroke="#EBEEF5"/>
+  <!-- lines: ts(mono) + level pill + msg -->
+  <g font-family="'Cascadia Mono','Consolas',monospace" font-size="11">
+    <text x="530" y="192" fill="#9AA3B2">09:12:03.120</text>
+    <rect x="612" y="183" width="40" height="14" rx="7" fill="#EEF2FF"/><text x="618" y="193" fill="#3358E0" font-size="9.5">INFO</text>
+    <text x="660" y="192" fill="#1A2233">==> Electron-hiprint 启动 &lt;==</text>
+
+    <text x="530" y="212" fill="#9AA3B2">09:12:03.880</text>
+    <rect x="612" y="203" width="40" height="14" rx="7" fill="#EEF2FF"/><text x="618" y="213" fill="#3358E0" font-size="9.5">INFO</text>
+    <text x="660" y="212" fill="#1A2233">本地服务已监听 127.0.0.1:17521</text>
+
+    <text x="530" y="232" fill="#9AA3B2">09:12:05.440</text>
+    <rect x="612" y="223" width="42" height="14" rx="7" fill="#FEF3E2"/><text x="618" y="233" fill="#B5740F" font-size="9.5">WARN</text>
+    <text x="662" y="232" fill="#8A6D3B">中转 token 为空，已跳过中转连接</text>
+
+    <text x="530" y="252" fill="#9AA3B2">09:12:08.991</text>
+    <rect x="612" y="243" width="44" height="14" rx="7" fill="#FDECEC"/><text x="617" y="253" fill="#C0392B" font-size="9.5">ERROR</text>
+    <text x="664" y="252" fill="#C0392B">connect ECONNREFUSED 10.0.0.5:9100</text>
+
+    <text x="530" y="272" fill="#9AA3B2">09:12:09.010</text>
+    <rect x="612" y="263" width="46" height="14" rx="7" fill="#EEF0F3"/><text x="617" y="273" fill="#8A93A3" font-size="9.5">DEBUG</text>
+    <text x="666" y="272" fill="#5B6472">retry queue size = 1</text>
+
+    <text x="530" y="292" fill="#9AA3B2">09:12:11.530</text>
+    <rect x="612" y="283" width="40" height="14" rx="7" fill="#EEF2FF"/><text x="618" y="293" fill="#3358E0" font-size="9.5">INFO</text>
+    <text x="660" y="292" fill="#1A2233">打印任务完成 tpl_001 (2页)</text>
+
+    <text x="530" y="312" fill="#9AA3B2">09:12:14.220</text>
+    <rect x="612" y="303" width="44" height="14" rx="7" fill="#FDECEC"/><text x="617" y="313" fill="#C0392B" font-size="9.5">ERROR</text>
+    <text x="664" y="312" fill="#C0392B">printer offline: Canon G3800</text>
+
+    <text x="530" y="332" fill="#9AA3B2">09:12:15.700</text>
+    <rect x="612" y="323" width="40" height="14" rx="7" fill="#EEF2FF"/><text x="618" y="333" fill="#3358E0" font-size="9.5">INFO</text>
+    <text x="660" y="332" fill="#1A2233">客户端断开 socket=Ab3…</text>
+  </g>
+  <!-- highlighted search match hint -->
+  <rect x="660" y="244" width="56" height="13" rx="2" fill="#FFF2A8" opacity="0.55"/>
+
+  <!-- footer -->
+  <text x="516" y="386" font-size="11" fill="#9AA3B2" font-family="monospace">…/logs/2026-06-10.log</text>
+  <text x="1104" y="386" font-size="11" fill="#9AA3B2" text-anchor="end">1,284 行 · 自动滚动</text>
+  <g font-size="11" fill="#2E7D46">
+    <text x="500" y="436">· 日期切换 + 级别过滤 + 关键字搜索高亮；级别色标(INFO/WARN/ERROR/DEBUG)；保留「打开文件夹」入口</text>
+  </g>
+</svg>
