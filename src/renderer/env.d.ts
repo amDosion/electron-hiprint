@@ -39,9 +39,17 @@ interface HiprintIndexBridge {
 interface HiprintSetBridge {
   readonly store: Record<string, unknown>
   send(channel: string, data?: unknown): void
-  on(channel: 'getPrintersList' | 'openDialog', callback: IpcListener): void
-  once(channel: 'getPrintersList' | 'openDialog', callback: IpcListener): void
-  removeAllListeners(channel: 'getPrintersList' | 'openDialog'): void
+  on(
+    channel: 'getPrintersList' | 'openDialog' | 'testTransitResult',
+    callback: IpcListener,
+  ): void
+  once(
+    channel: 'getPrintersList' | 'openDialog' | 'testTransitResult',
+    callback: IpcListener,
+  ): void
+  removeAllListeners(
+    channel: 'getPrintersList' | 'openDialog' | 'testTransitResult',
+  ): void
 }
 
 interface HiprintPrintLogBridge {

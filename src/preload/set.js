@@ -11,7 +11,11 @@ const sendChannels = new Set([
   "closeSetWindow",
   "getPrintersList",
 ]);
-const onChannels = new Set(["getPrintersList", "openDialog"]);
+const onChannels = new Set([
+  "getPrintersList",
+  "openDialog",
+  "testTransitResult",
+]);
 
 contextBridge.exposeInMainWorld("hiprintSet", {
   store: ipcRenderer.sendSync("hiprint:settings-snapshot"),

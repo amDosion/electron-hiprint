@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { requireBridge } from '@/shared/bridge'
 
@@ -442,6 +443,19 @@ const rules = computed<Record<string, unknown[]>>(() => {
 ipc.on('getPrintersList', (_event, printers) => {
   printerList.value = Array.isArray(printers) ? (printers as Array<Record<string, unknown>>) : []
 })
+
+// 测试连接结果：主进程回传后用应用内统一风格的 ElMessage 提示（替代 OS 原生对话框）。
+// 顶层注册一次，避免每次点击「测试连接」叠加监听器。
+ipc.on('testTransitResult', (_event, result) => {
+  const r = (result ?? {}) as { type?: string; message?: string }
+  const isSuccess = r.type === 'success'
+  ElMessage({
+    type: isSuccess ? 'success' : 'error',
+    message: r.message || (isSuccess ? '连接成功！' : '连接失败'),
+    duration: 3000,
+  })
+})
+
 getPrintersList()
 
 onMounted(() => {
@@ -451,6 +465,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   ipc.removeAllListeners('getPrintersList')
   ipc.removeAllListeners('openDialog')
+  ipc.removeAllListeners('testTransitResult')
 })
 </script>
 

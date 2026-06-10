@@ -240,44 +240,36 @@ function testTransit(event, data) {
     },
   });
 
+  // 测试结果只反馈一次：去重 + 关闭 socket + 清超时，避免重复提示与连接泄漏。
+  // 结果经 testTransitResult 回传渲染层，由 ElMessage 统一风格提示（替代 OS 原生对话框）。
+  let settled = false;
+  const finish = (type, message) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    try {
+      socket.close();
+    } catch {
+      /* 关闭异常忽略 */
+    }
+    if (!event.sender.isDestroyed()) {
+      event.reply("testTransitResult", { type, message });
+    }
+  };
+
+  // 超时兜底：无任何事件时也要给反馈并释放 socket（原成功分支漏 close 会泄漏）。
+  const timer = setTimeout(() => {
+    finish("error", "连接超时，请检查地址与网络后重试！");
+  }, 10000);
+
   // 连接错误
   socket.on("connect_error", (err) => {
-    dialog.showMessageBox(SET_WINDOW, {
-      type: "error",
-      title: "提示",
-      message: `${err.message}，请检查设置！`,
-      buttons: ["确定"],
-      noLink: true,
-    });
-    socket.close();
+    finish("error", `${err.message}，请检查设置！`);
   });
 
   // 连接成功
   socket.on("connect", () => {
-    dialog.showMessageBox(SET_WINDOW, {
-      type: "info",
-      title: "提示",
-      message: "连接成功！",
-      buttons: ["确定"],
-      noLink: true,
-    });
-  });
-
-  // 中转服务信息
-  socket.on("serverInfo", (data) => {
-    // TODO: 根据服务器返回信息判断服务器是否满足连接条件
-    // {
-    //   version: '0.0.4', // 中转服务版本号
-    //   currentClients: 1, // 当前 token client 连接数
-    //   allClients: 1, // 所有 token client 连接数
-    //   webClients: 1, // web client 连接数
-    //   allWebClients: 1, // 所有 web client 连接数
-    //   totalmem: 17179869184, // 总内存
-    //   freemem: 94961664, // 可用内存
-    // }
-
-    // 关闭测试连接
-    socket.close();
+    finish("success", "连接成功！");
   });
 }
 
