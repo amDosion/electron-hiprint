@@ -109,13 +109,11 @@ function readLog(date) {
         if (err || !Array.isArray(rows)) return resolve(empty);
         const truncated = rows.length > MAX_LINES;
         const slice = truncated ? rows.slice(0, MAX_LINES) : rows;
-        const lines = slice
-          .reverse()
-          .map((r) => ({
-            ts: r.ts || "",
-            level: KNOWN_LEVELS.has(String(r.level)) ? r.level : "info",
-            msg: r.msg != null ? r.msg : "",
-          }));
+        const lines = slice.reverse().map((r) => ({
+          ts: r.ts || "",
+          level: KNOWN_LEVELS.has(String(r.level)) ? r.level : "info",
+          msg: r.msg != null ? r.msg : "",
+        }));
         resolve({ lines, file: date, truncated });
       },
     );

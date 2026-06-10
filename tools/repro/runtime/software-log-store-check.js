@@ -39,9 +39,10 @@ killTimer.unref && killTimer.unref();
 app.whenReady().then(async () => {
   const result = { steps: [] };
   try {
-    const store = require(
-      path.join(__dirname, "../../../src/software-log-store"),
-    );
+    const store = require(path.join(
+      __dirname,
+      "../../../src/software-log-store",
+    ));
 
     const now = new Date();
     // 写入 3 条：含非字符串参数（对象）与 Error，验证多参数格式化与级别处理
