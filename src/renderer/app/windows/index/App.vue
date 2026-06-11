@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { Printer, View, Setting, DocumentCopy } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+// index 窗口未整体注册 element-plus（main.ts 仅 createApp），故按需引入 ElMessage 的样式，
+// 否则复制反馈的提示条无样式。与设置窗口的反馈语言保持一致。
+import 'element-plus/es/components/message/style/css'
 import { requireBridge } from '@/shared/bridge'
 
 // Electron preload 桥接（src/preload/index.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
@@ -41,14 +45,12 @@ function handleTriggerView(): void {
 }
 
 // 复制始终使用真实值（而非遮罩后的展示值）；空值（IPC 回填前/获取失败）直接忽略，
-// 避免写入空串并谎报“复制成功”。
+// 避免写入空串并谎报“复制成功”。反馈用应用内 ElMessage（即时、自动消失），
+// 取代旧的 OS 系统通知——后者可能被 Windows 专注助手/通知设置压制，导致“点了没反应”。
 function handleCopy(value: string): void {
   if (!value) return
   ipc.writeText(value)
-  ipc.send('notification', {
-    title: '复制成功',
-    body: '文本已成功复制到剪贴板中！',
-  })
+  ElMessage({ type: 'success', message: '已复制到剪贴板', duration: 1500 })
 }
 
 function updateConnectionStatus(arg: unknown): void {
@@ -130,7 +132,7 @@ onMounted(() => {
               {{ privateData(ipAddress) }}
             </span>
           </div>
-          <span class="copy-hint"><el-icon><DocumentCopy /></el-icon>复制</span>
+          <span class="copy-hint" @click="handleCopy(ipAddress)"><el-icon><DocumentCopy /></el-icon>复制</span>
         </div>
 
         <!-- 状态网格 -->
@@ -377,7 +379,14 @@ body {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  pointer-events: none;
+  transition: background 0.15s, color 0.15s;
+}
+.copy-hint:hover {
+  background: var(--c-brand);
+  color: #fff;
+}
+.copy-hint:active {
+  filter: brightness(0.96);
 }
 
 /* 状态网格 2x2 */
