@@ -1,19 +1,31 @@
-name: Bump on plugin release
+name: Auto version tag
 
-# 联动链路第 2 环（纯 GitHub 事件联动，不在仓库内同步/提交任何插件文件）：
-#   插件仓库 vue-plugin-hiprint-v2 发布 npm 后，通过 repository_dispatch 触发本工作流。
-#   本工作流只：自增客户端 patch 版本 -> 提交 package.json -> 打 tag。
+# 自动发版链路：
+#   代码推送到 master/main，或插件仓库 vue-plugin-hiprint-v2 发布 npm 后，
+#   本工作流会准备客户端版本 -> 提交 package.json/package-lock.json -> 打 tag。
 #   tag 推送触发 release.yml；release 构建阶段由 tools/build-package.js ->
 #   tools/sync-builtin-plugin.js 在「构建期」从 npm 拉取最新插件烘焙进安装包。
 #   插件因此永远只在构建产物里，绝不进版本库。
+#
+# 版本策略：
+#   - 当前 package.json version 没有同名 tag：直接使用当前版本补 tag。
+#   - 当前 package.json version 已有同名 tag：自增 patch 后再打 tag。
 #
 # 重要：推 tag 必须使用 PAT（secrets.RELEASE_PAT），不能用自带 GITHUB_TOKEN，
 # 否则 GitHub 的防递归机制会导致 release.yml 不被触发。
 #
 # 安全：repository_dispatch 的 client_payload 完全由调用方构造，视为不可信输入，
-# 经 env 注入并校验后才使用。
+# 经 env 注入并校验后才使用。自动 release commit 会被 job.if 跳过，避免循环发版。
 
 on:
+  push:
+    branches: [master, main]
+    paths-ignore:
+      - "docs/**"
+      - ".omx/**"
+      - ".remember/**"
+      - ".investigations/**"
+      - ".github/**"
   repository_dispatch:
     types: [plugin-released]
   workflow_dispatch:
@@ -27,14 +39,18 @@ concurrency:
 
 jobs:
   bump-and-tag:
-    name: Bump client and push tag
+    name: Prepare client version and push tag
+    if: >-
+      github.event_name != 'push' ||
+      github.event.head_commit == null ||
+      !startsWith(github.event.head_commit.message, 'chore(release): client ')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout master
+      - name: Checkout release branch
         uses: actions/checkout@v5
         with:
-          ref: master
+          ref: ${{ github.ref_name || 'master' }}
           fetch-depth: 0
           # 用 PAT 拉取/推送，确保后续 tag push 能触发 release.yml
           token: ${{ secrets.RELEASE_PAT }}
@@ -44,25 +60,59 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Bump client patch version
-        id: bump
+      - name: Prepare client version
+        id: version
         run: |
-          NEW=$(npm version patch --no-git-tag-version | tr -d 'v')
+          git fetch --tags origin
+
+          CURRENT=$(node -p "require('./package.json').version")
+          if ! printf '%s' "$CURRENT" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'; then
+            echo "Invalid package.json version: $CURRENT"
+            exit 1
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${CURRENT}" >/dev/null; then
+            NEW=$(npm version patch --no-git-tag-version | tr -d 'v')
+            MODE=patch
+          else
+            NEW=$(npm version "$CURRENT" --no-git-tag-version --allow-same-version | tr -d 'v')
+            MODE=current
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${NEW}" >/dev/null; then
+            echo "Tag ${NEW} already exists after version preparation."
+            exit 1
+          fi
+
           echo "version=${NEW}" >> "$GITHUB_OUTPUT"
+          echo "mode=${MODE}" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push tag
         env:
-          CLIENT_VERSION: ${{ steps.bump.outputs.version }}
+          CLIENT_VERSION: ${{ steps.version.outputs.version }}
+          VERSION_MODE: ${{ steps.version.outputs.mode }}
           PLUGIN_VERSION: ${{ github.event.client_payload.pluginVersion }}
         run: |
-          SAFE_PV=latest
-          if printf '%s' "$PLUGIN_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'; then
-            SAFE_PV="$PLUGIN_VERSION"
+          TARGET_BRANCH="${GITHUB_REF_NAME:-master}"
+          RELEASE_REASON="code change"
+          if [ "$GITHUB_EVENT_NAME" = "repository_dispatch" ]; then
+            SAFE_PV=latest
+            if printf '%s' "$PLUGIN_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'; then
+              SAFE_PV="$PLUGIN_VERSION"
+            fi
+            RELEASE_REASON="plugin ${SAFE_PV}"
           fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json package-lock.json
-          git commit -m "chore(release): client ${CLIENT_VERSION} (plugin ${SAFE_PV})"
-          git push origin master
+
+          if git diff --cached --quiet; then
+            echo "No version file changes to commit; tagging current ${TARGET_BRANCH}."
+          else
+            git commit -m "chore(release): client ${CLIENT_VERSION} (${RELEASE_REASON}, ${VERSION_MODE})"
+            git push origin "HEAD:${TARGET_BRANCH}"
+          fi
+
           git tag "${CLIENT_VERSION}"
           git push origin "${CLIENT_VERSION}"

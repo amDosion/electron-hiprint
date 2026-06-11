@@ -29,6 +29,7 @@ function main() {
   const renameTool = read("tools/rename.js");
   const installersWorkflow = read(".github/workflows/installers.yml");
   const releaseWorkflow = read(".github/workflows/release.yml");
+  const autoTagWorkflow = read(".github/workflows/plugin-bump.yml");
 
   const directBuilderScripts = Object.entries(scripts).filter(([name, value]) => {
     return (
@@ -45,6 +46,13 @@ function main() {
     `build scripts should call a Node wrapper instead of shell-chaining electron-builder; offenders: ${directBuilderScripts
       .map(([name]) => name)
       .join(", ")}`,
+  );
+
+  record(
+    risks,
+    "UNUSED-IPP-DEPENDENCY-PRESENT",
+    !Object.prototype.hasOwnProperty.call(packageJson.dependencies || {}, "ipp"),
+    "The direct ipp dependency is unused and its latest npm metadata declares node <4.0.0, which emits EBADENGINE under the Node 24 installer workflow.",
   );
 
   record(
@@ -117,6 +125,21 @@ function main() {
       releaseWorkflow.includes("[0-9]*.[0-9]*.[0-9]*") &&
       releaseWorkflow.includes("out/hiprint_${{ matrix.artifact }}-*.exe.blockmap"),
     "The tag release workflow should use the same multi-platform build scripts and artifact checks.",
+  );
+
+  record(
+    risks,
+    "AUTO-TAG-WORKFLOW-MISSING",
+    exists(".github/workflows/plugin-bump.yml") &&
+      autoTagWorkflow.includes("push:") &&
+      autoTagWorkflow.includes("branches: [master, main]") &&
+      autoTagWorkflow.includes("repository_dispatch") &&
+      autoTagWorkflow.includes("secrets.RELEASE_PAT") &&
+      autoTagWorkflow.includes("startsWith(github.event.head_commit.message, 'chore(release): client ')") &&
+      autoTagWorkflow.includes("npm version patch --no-git-tag-version") &&
+      autoTagWorkflow.includes("--allow-same-version") &&
+      autoTagWorkflow.includes('git push origin "${CLIENT_VERSION}"'),
+    "The auto tag workflow should bump/tag valid branch pushes and plugin releases using RELEASE_PAT so tag pushes can trigger the release workflow.",
   );
 
   console.log(

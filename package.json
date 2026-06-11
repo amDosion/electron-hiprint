@@ -124,7 +124,6 @@
     "dayjs": "^1.11.10",
     "electron-log": "^5.4.2",
     "electron-store": "^8.1.0",
-    "ipp": "^2.0.1",
     "jimp": "^1.6.0",
     "jquery": "^3.6.0",
     "jsbarcode": "^3.11.6",
