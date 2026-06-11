@@ -72,7 +72,7 @@ const columns: ColumnConfig[] = [
       dayjs(cellValue as string | number).format('YYYY/MM/DD HH:mm:ss'),
   },
   { prop: 'clientType', label: '连接类型', align: 'center', width: '102px', sortable: 'custom' },
-  { prop: 'printer', label: '打印机', align: 'center', width: '120px' },
+  { prop: 'printer', label: '打印机', showOverflowTooltip: true, align: 'center', width: '160px' },
   { prop: 'templateId', label: '模板 ID', showOverflowTooltip: true, align: 'center', width: '120px' },
   {
     prop: 'pageNum',
@@ -82,7 +82,7 @@ const columns: ColumnConfig[] = [
     formatter: (_row, _column, cellValue) => `${cellValue}页`,
   },
   { prop: 'status', label: '状态', align: 'center', width: '74px', sortable: 'custom' },
-  { prop: 'errorMessage', label: '错误信息' },
+  { prop: 'errorMessage', label: '错误信息', showOverflowTooltip: true },
   { prop: 'action', label: '操作', align: 'center', width: '120px' },
 ]
 
@@ -319,8 +319,8 @@ body {
   display: flex;
   flex-direction: row;
   align-items: center;
-  flex-wrap: nowrap;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 10px 14px;
 }
 
 /* 每个筛选项不带额外外边距，整体在一行内居中对齐 */
@@ -328,7 +328,8 @@ body {
   display: inline-flex;
   align-items: center;
   margin: 0;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .search-form .el-form-item__label {
@@ -338,11 +339,11 @@ body {
 
 .filter-time .el-date-editor.el-input,
 .filter-time .el-date-editor--datetimerange.el-input__wrapper {
-  width: 300px !important;
+  width: min(300px, calc(100vw - 120px)) !important;
 }
 
 .filter-select .el-select {
-  width: 150px !important;
+  width: min(150px, calc(50vw - 70px)) !important;
 }
 
 /* 输入控件（element-plus 2.x 边框/底色在 .el-input__wrapper 上，用 inset box-shadow 描边） */
@@ -436,6 +437,7 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   margin-bottom: 12px;
+  overflow: hidden;
 }
 
 .table.el-table {
@@ -446,6 +448,24 @@ body {
   box-shadow: var(--pl-shadow);
   overflow: hidden;
   color: var(--pl-text);
+}
+
+.table .el-table__body,
+.table .el-table__header {
+  width: 100% !important;
+}
+
+.table .el-scrollbar__wrap {
+  overflow-x: hidden !important;
+}
+
+.table .el-scrollbar__bar.is-horizontal {
+  display: none;
+}
+
+.table .cell {
+  min-width: 0;
+  word-break: break-word;
 }
 
 .table.el-table::before,

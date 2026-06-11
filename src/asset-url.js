@@ -12,8 +12,20 @@ const SCHEME = "app";
 const HOST = "bundle";
 
 // assets/ 根：app:// handler 与 URL 构造共用同一基准。
+// 打包态指向 app.asar.unpacked，避免 Electron 42 访问 app.asar 内静态资源时
+// 触发内部 fs.Stats DEP0180 告警。
 function assetsRoot() {
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, "app.asar.unpacked", "assets");
+  }
   return path.join(app.getAppPath(), "assets");
+}
+
+// 隐藏打印/渲染窗口仍用 file://，但打包态必须避开 app.asar 内路径。
+// Electron 42 从 file:// 读取 app.asar 内文件时会触发内部 lstat 兼容层的
+// DEP0180 警告；对应文件由 electron-builder asarUnpack 解包到普通目录。
+function fileAssetsRoot() {
+  return assetsRoot();
 }
 
 // 构造 app://bundle/<asset> URL（各段做 URI 编码，杜绝特殊字符注入）。
@@ -30,13 +42,14 @@ function getAssetUrl(...assetPath) {
 // 打印引擎窗口（render.html / print.html）的 CSP 内置 file: scheme、围绕 file:// 设计，
 // 保留 file:// 加载以维持其既有行为；不纳入 app:// 迁移范围。
 function getFileAssetUrl(...assetPath) {
-  return pathToFileURL(path.join(assetsRoot(), ...assetPath)).href;
+  return pathToFileURL(path.join(fileAssetsRoot(), ...assetPath)).href;
 }
 
 module.exports = {
   SCHEME,
   HOST,
   assetsRoot,
+  fileAssetsRoot,
   getAssetUrl,
   getFileAssetUrl,
 };

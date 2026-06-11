@@ -8,12 +8,23 @@
 // 约定：stdout 打印 SMOKE_RESULT <json>，failed=false 且退出码 0 表示通过。
 
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 
 const electron = require("electron");
 const { app, BrowserWindow, ipcMain } = electron;
 
 app.getAppPath = () => REPO_ROOT;
+const USER_DATA_DIR = path.join(
+  os.tmpdir(),
+  `electron-hiprint-printlog-smoke-${process.pid}`,
+);
+fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+app.setPath("userData", USER_DATA_DIR);
+app.once("will-quit", () => {
+  fs.rmSync(USER_DATA_DIR, { recursive: true, force: true });
+});
 
 // preload/printLog.js 在加载时 sendSync 同步取 rePrint 开关（阻塞渲染直到主进程应答）。
 ipcMain.on("hiprint:store-get", (event, key) => {
@@ -60,7 +71,10 @@ app.whenReady().then(async () => {
     result.failed = true;
     result.steps.push({ step: "did-fail-load", code, desc, url });
   });
-  win.webContents.on("console-message", (_e, level, message) => {
+  win.webContents.on("console-message", (event) => {
+    const details = event && typeof event === "object" ? event : {};
+    const level = details.level || 0;
+    const message = details.message || "";
     if (level >= 3) result.consoleErrors.push(message);
   });
 

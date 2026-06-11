@@ -92,7 +92,36 @@ if (!fs.existsSync(helperPath)) {
         "The shared helper must use node:url pathToFileURL for Windows-safe file URLs.",
     });
   }
+  if (!/app\.asar\.unpacked/.test(helper)) {
+    risks.push({
+      id: "RUNTIME-FILE-ASSET-URL-STILL-POINTS-AT-ASAR",
+      severity: "high",
+      detail:
+        "Packaged file:// print/render windows must load from app.asar.unpacked to avoid Electron asar lstat deprecation warnings.",
+    });
+  }
 }
+
+const packageJson = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
+);
+const asarUnpack = new Set(packageJson.build && packageJson.build.asarUnpack);
+[
+  "assets/**",
+  "node_modules/jquery/dist/jquery.min.js",
+  "node_modules/nzh/dist/nzh.min.js",
+  "node_modules/bwip-js/dist/bwip-js.js",
+  "node_modules/jsbarcode/dist/JsBarcode.all.min.js",
+].forEach((pattern) => {
+  if (!asarUnpack.has(pattern)) {
+    risks.push({
+      id: "RUNTIME-FILE-ASSET-MISSING-ASAR-UNPACK",
+      severity: "high",
+      file: "package.json",
+      detail: `Missing build.asarUnpack entry required by hidden print/render file windows: ${pattern}`,
+    });
+  }
+});
 
 const result = {
   repoRoot,

@@ -7,6 +7,10 @@ const fs = require("fs");
 const { printPdf, printPdfBlob } = require("./pdf-print");
 const { getFileAssetUrl } = require("./asset-url");
 const { store, getCurrentPrintStatusByName } = require("../tools/utils");
+const {
+  getPrinterReadiness,
+  formatPrinterStatus,
+} = require("./printer-status");
 const db = require("../tools/database");
 const dayjs = require("dayjs");
 const { v7: uuidv7 } = require("uuid");
@@ -57,51 +61,20 @@ function initPrintEvent() {
     }
     const printers = await PRINT_WINDOW.webContents.getPrintersAsync();
     let defaultPrinter = data.printer || store.get("defaultPrinter", "");
-    // todo: 打印机状态对照表，根据打印机状态判断是否支持打印
-    // win32: https://learn.microsoft.com/en-us/windows/win32/printdocs/printer-info-2
-    // cups: https://www.cups.org/doc/cupspm.html#ipp_status_e
-    const ENABLE_STATUS = process.platform === "win32" ? [0, 512, 1024] : [3];
-    let printerError = false;
-    printers.forEach((element) => {
-      // 获取默认打印机
-      if (
-        element.isDefault &&
-        (defaultPrinter == "" || defaultPrinter == void 0)
-      ) {
-        defaultPrinter = element.name;
-      }
-      // 判断打印机状态是否允许打印
-      if (element.name === defaultPrinter) {
-        if (!ENABLE_STATUS.includes(element.status)) {
-          printerError = true;
-        }
-      }
+    const readiness = getPrinterReadiness({
+      platform: process.platform,
+      printers,
+      printerName: defaultPrinter,
+      getStatusByName: getCurrentPrintStatusByName,
     });
-    if (printerError) {
-      const { StatusMsg } = getCurrentPrintStatusByName(defaultPrinter);
-      console.log(
-        `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
-          data.templateId
-        }】 打印失败，打印机异常，打印机：${defaultPrinter}, 打印机状态：${StatusMsg}`,
-      );
-      socket &&
-        socket.emit("error", {
-          msg: data.printer + "打印机异常",
-          templateId: data.templateId,
-          replyId: data.replyId,
-        });
-      if (data.taskId) {
-        // 通过 taskMap 调用 task done 回调
-        PRINT_RUNNER_DONE[data.taskId]();
-        delete PRINT_RUNNER_DONE[data.taskId];
-      }
-      MAIN_WINDOW &&
-        MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
-      return;
-    }
+    defaultPrinter = readiness.printerName || defaultPrinter;
     let deviceName = defaultPrinter;
 
     const logPrintResult = (status, errorMessage = "") => {
+      const logData = { ...data };
+      if (Object.prototype.hasOwnProperty.call(logData, "pdf_blob")) {
+        logData.pdf_blob = "[omitted]";
+      }
       db.run(
         `INSERT INTO print_logs (socketId, clientType, printer, templateId, data, pageNum, status, rePrintAble, errorMessage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -109,7 +82,7 @@ function initPrintEvent() {
           data.clientType,
           deviceName,
           data.templateId,
-          JSON.stringify(data),
+          JSON.stringify(logData),
           data.pageNum,
           status,
           data.rePrintAble ?? 1,
@@ -122,6 +95,30 @@ function initPrintEvent() {
         },
       );
     };
+
+    if (!readiness.ready) {
+      const statusText = formatPrinterStatus(readiness);
+      console.log(
+        `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
+          data.templateId
+        }】 打印失败，打印机异常，打印机：${deviceName}, 打印机状态：${statusText}`,
+      );
+      logPrintResult("failed", `打印机异常：${statusText}`);
+      socket &&
+        socket.emit("error", {
+          msg: deviceName + "打印机异常",
+          templateId: data.templateId,
+          replyId: data.replyId,
+        });
+      if (data.taskId) {
+        // 通过 taskMap 调用 task done 回调
+        PRINT_RUNNER_DONE[data.taskId]();
+        delete PRINT_RUNNER_DONE[data.taskId];
+      }
+      MAIN_WINDOW &&
+        MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+      return;
+    }
 
     // pdf 打印
     let isPdf = data.type && `${data.type}`.toLowerCase() === "pdf";
@@ -446,18 +443,20 @@ function checkPrinterStatus(deviceName, callback) {
     PRINT_WINDOW.webContents
       .getPrintersAsync()
       .then((printers) => {
-        const printer = printers.find((printer) => printer.name === deviceName);
-        console.log(`current printer: ${JSON.stringify(printer)}`);
-        // todo: 打印机状态对照表，根据打印机状态判断是否支持打印
-        // win32: https://learn.microsoft.com/en-us/windows/win32/printdocs/printer-info-2
-        // cups: https://www.cups.org/doc/cupspm.html#ipp_status_e
-        const ENABLE_STATUS =
-          process.platform === "win32" ? [0, 512, 1024] : [3];
-        if (printer && ENABLE_STATUS.includes(printer.status)) {
+        const readiness = getPrinterReadiness({
+          platform: process.platform,
+          printers,
+          printerName: deviceName,
+          getStatusByName: getCurrentPrintStatusByName,
+        });
+        console.log(`current printer: ${JSON.stringify(readiness)}`);
+        if (readiness.ready) {
           callback && callback();
           clearInterval(intervalId); // Stop polling when status is 0
           console.log(
-            `Printer ${deviceName} is now ready (status: ${printer.status})`,
+            `Printer ${deviceName} is now ready (${formatPrinterStatus(
+              readiness,
+            )})`,
           );
           // You can add any additional logic here for when the printer is ready
         }

@@ -8,6 +8,10 @@ const dayjs = require("dayjs");
 
 const { getFileAssetUrl } = require("./asset-url");
 const { store, getCurrentPrintStatusByName } = require("../tools/utils");
+const {
+  getPrinterReadiness,
+  formatPrinterStatus,
+} = require("./printer-status");
 const db = require("../tools/database");
 
 // 这是 1920 * 1080 屏幕常规工作区域尺寸
@@ -326,53 +330,13 @@ async function printFun(event, data) {
   }
   const printers = await RENDER_WINDOW.webContents.getPrintersAsync();
   let defaultPrinter = data.printer || store.get("defaultPrinter", "");
-  let printerError = false;
-  printers.forEach((element) => {
-    // 获取默认打印机
-    if (
-      element.isDefault &&
-      (defaultPrinter == "" || defaultPrinter == void 0)
-    ) {
-      defaultPrinter = element.name;
-    }
-    // 判断打印机是否存在
-    if (element.name === defaultPrinter) {
-      // todo: 打印机状态对照表
-      // win32: https://learn.microsoft.com/en-us/windows/win32/printdocs/printer-info-2
-      // cups: https://www.cups.org/doc/cupspm.html#ipp_status_e
-      if (process.platform === "win32") {
-        // 512 忙(Busy）
-        // 1024 正在打印（Printing）
-        if (![0, 512, 1024].includes(element.status)) {
-          printerError = true;
-        }
-      } else {
-        if (element.status != 3) {
-          printerError = true;
-        }
-      }
-    }
+  const readiness = getPrinterReadiness({
+    platform: process.platform,
+    printers,
+    printerName: defaultPrinter,
+    getStatusByName: getCurrentPrintStatusByName,
   });
-  if (printerError) {
-    const { StatusMsg } = getCurrentPrintStatusByName(defaultPrinter);
-    console.log(
-      `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
-        data.templateId
-      }】 打印失败，打印机异常，打印机：${
-        data.printer
-      }，打印机状态：${StatusMsg}`,
-    );
-    socket &&
-      socket.emit("render-print-error", {
-        msg: data.printer + "打印机异常",
-        templateId: data.templateId,
-        replyId: data.replyId,
-      });
-    // 通过 taskMap 调用 task done 回调
-    RENDER_RUNNER_DONE[data.taskId]();
-    delete RENDER_RUNNER_DONE[data.taskId];
-    return;
-  }
+  defaultPrinter = readiness.printerName || defaultPrinter;
   let deviceName = defaultPrinter;
 
   const logPrintResult = (status, errorMessage = "") => {
@@ -396,6 +360,26 @@ async function printFun(event, data) {
       },
     );
   };
+
+  if (!readiness.ready) {
+    const statusText = formatPrinterStatus(readiness);
+    console.log(
+      `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
+        data.templateId
+      }】 打印失败，打印机异常，打印机：${deviceName}，打印机状态：${statusText}`,
+    );
+    logPrintResult("failed", `打印机异常：${statusText}`);
+    socket &&
+      socket.emit("render-print-error", {
+        msg: deviceName + "打印机异常",
+        templateId: data.templateId,
+        replyId: data.replyId,
+      });
+    // 通过 taskMap 调用 task done 回调
+    RENDER_RUNNER_DONE[data.taskId]();
+    delete RENDER_RUNNER_DONE[data.taskId];
+    return;
+  }
 
   // 打印 详见https://www.electronjs.org/zh/docs/latest/api/web-contents
   RENDER_WINDOW.webContents.print(
