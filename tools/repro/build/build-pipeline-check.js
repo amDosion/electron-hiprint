@@ -126,8 +126,12 @@ function main() {
       releaseWorkflow.includes("macos-15-intel") &&
       releaseWorkflow.includes("build-kylin") &&
       releaseWorkflow.includes("[0-9]*.[0-9]*.[0-9]*") &&
+      !releaseWorkflow.includes("actions/download-artifact@v6") &&
+      releaseWorkflow.includes("actions/download-artifact@v8") &&
+      !releaseWorkflow.includes("softprops/action-gh-release@v2") &&
+      releaseWorkflow.includes("softprops/action-gh-release@v3") &&
       releaseWorkflow.includes("out/hiprint_${{ matrix.artifact }}-*.exe.blockmap"),
-    "The tag release workflow should use the same multi-platform build scripts and artifact checks.",
+    "The tag release workflow should use the same multi-platform build scripts, artifact checks, and Node 24-compatible release actions.",
   );
 
   record(
