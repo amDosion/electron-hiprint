@@ -86,7 +86,8 @@ function main() {
     exists(".github/workflows/installers.yml") &&
       !exists(".github/workflows/windows-installer.yml") &&
       installersWorkflow.includes("workflow_dispatch") &&
-      installersWorkflow.includes("windows-latest") &&
+      !installersWorkflow.includes("windows-latest") &&
+      installersWorkflow.includes("windows-2025-vs2026") &&
       installersWorkflow.includes("macos-15-intel") &&
       installersWorkflow.includes("macos-15") &&
       installersWorkflow.includes("ubuntu-latest") &&
@@ -98,7 +99,7 @@ function main() {
       installersWorkflow.includes("build-l") &&
       installersWorkflow.includes("build-l-arm64") &&
       installersWorkflow.includes("build-kylin"),
-    "GitHub Actions should provide a multi-platform installer artifact workflow instead of a Windows-only workflow.",
+    "GitHub Actions should provide a multi-platform installer artifact workflow with an explicit Windows runner label instead of a Windows-only workflow or floating windows-latest label.",
   );
 
   record(
@@ -120,6 +121,8 @@ function main() {
     "TAG-RELEASE-WORKFLOW-NOT-USING-BUILD-SCRIPTS",
     releaseWorkflow.includes("npm run ${{ matrix.script }}") &&
       releaseWorkflow.includes('node-version: "24"') &&
+      !releaseWorkflow.includes("windows-latest") &&
+      releaseWorkflow.includes("windows-2025-vs2026") &&
       releaseWorkflow.includes("macos-15-intel") &&
       releaseWorkflow.includes("build-kylin") &&
       releaseWorkflow.includes("[0-9]*.[0-9]*.[0-9]*") &&

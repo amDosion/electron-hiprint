@@ -26,10 +26,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2025-vs2026
             script: build-w-64
             artifact: win_x64
-          - os: windows-latest
+          - os: windows-2025-vs2026
             script: build-w
             artifact: win_x32
           - os: macos-15
