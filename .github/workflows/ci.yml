@@ -24,15 +24,20 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "18"
+          node-version: "24"
+          cache: npm
 
       - name: Install dependencies
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Check JavaScript syntax
         run: |
           node --check main.js
           node --check start.js
+          node --check src/deferred-installer-launcher.js
+          node --check src/online-update.js
+          node --check src/online-upgrade-runner.js
           node --check src/set.js
           node --check tools/utils.js
           node --check build/write-build-info.js
+          node --check tools/repro/updater/github-online-upgrade-check.js
