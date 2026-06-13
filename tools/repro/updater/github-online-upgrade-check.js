@@ -105,10 +105,14 @@ expect(
   /hiprint-online-upgrade-launcher\.log/.test(deferredInstallerText) &&
     /Out-File/.test(deferredInstallerText) &&
     /FAILED:/.test(deferredInstallerText) &&
-    /-PassThru/.test(deferredInstallerText),
+    /-PassThru/.test(deferredInstallerText) &&
+    /-ErrorAction Stop/.test(deferredInstallerText) &&
+    /waitForLauncherReady/.test(deferredInstallerText) &&
+    /ready\s+\$\{launcherId\}/.test(deferredInstallerText) &&
+    !/detached:\s*true/.test(deferredInstallerText),
   "UPDATER-DEFERRED-INSTALLER-NOT-OBSERVABLE",
   "high",
-  "Deferred installer failures should be logged to a temp launcher log instead of being swallowed by a hidden helper.",
+  "Deferred installer readiness and failures should be logged to a temp launcher log instead of being swallowed by a detached hidden helper.",
 );
 
 expect(
@@ -209,6 +213,7 @@ if (fs.existsSync(deferredInstallerPath)) {
   const script = deferredInstaller.buildDeferredInstallerScript({
     installerPath: "C:\\Temp\\hiprint's test.exe",
     waitPid: 12345,
+    launcherId: "test-launcher-id",
   });
   expect(
     script.indexOf("Wait-Process") !== -1 &&
@@ -221,9 +226,11 @@ if (fs.existsSync(deferredInstallerPath)) {
   expect(
     script.includes("hiprint''s test.exe") &&
       script.includes("hiprint-online-upgrade-launcher.log") &&
+      script.includes("ready test-launcher-id") &&
       script.includes("Out-File") &&
       script.includes("FAILED:") &&
       script.includes("-PassThru") &&
+      script.includes("-ErrorAction Stop") &&
       !deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("/S") &&
       deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes(
         "/KEEP_APP_DATA",
@@ -232,6 +239,14 @@ if (fs.existsSync(deferredInstallerPath)) {
     "UPDATER-DEFERRED-INSTALLER-ARGS-BROKEN",
     "high",
     "The installer launch script should quote paths safely, log helper failures, and use visible app-data-preserving arguments.",
+  );
+
+  expect(
+    typeof deferredInstaller.waitForLauncherReady === "function" &&
+      Number.isFinite(deferredInstaller.DEFAULT_LAUNCHER_READY_TIMEOUT_MS),
+    "UPDATER-DEFERRED-INSTALLER-READY-WAIT-MISSING",
+    "high",
+    "The app should wait for an explicit helper ready marker before quitting.",
   );
 }
 
