@@ -75,4 +75,12 @@ npm run build-w-64
 
 - Added `src/deferred-installer-launcher.js` so the Windows installer is scheduled from a detached PowerShell helper that waits for the current process to exit before running the NSIS installer.
 - The online upgrade runner now logs check/download/verify/install scheduling/error stages to the software log.
-- The regression script now asserts the deferred launch order, safe path quoting, visible installer UI, and `/KEEP_APP_DATA --updated` upgrade arguments.
+- The regression script now asserts the deferred launch order, safe path quoting, visible installer UI, temp launcher logging, and `/KEEP_APP_DATA` upgrade argument.
+
+2026-06-13 visible-installer follow-up:
+
+- Removed `--updated` from the main installer launch arguments. That flag belongs to electron-builder's internal upgrade/uninstall path, while the user-confirmed online-upgrade path should open the normal visible installer UI.
+- The deferred launcher now writes a temporary PowerShell script and runs it with `powershell.exe -File`, avoiding nested command-line quoting issues.
+- The helper logs wait/launch/failure stages to `%TEMP%\hiprint-online-upgrade-launcher.log` so hidden helper failures are diagnosable.
+- The helper remains hidden, but the NSIS installer is started with `Start-Process -WindowStyle Normal -PassThru`.
+- The regression script also asserts that `installer.nsh` preserves AppData on both electron-builder upgrade and explicit `/KEEP_APP_DATA` paths.

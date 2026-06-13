@@ -14,6 +14,7 @@ const setJs = readText("src/set.js");
 const mainJs = readText("main.js");
 const preloadSetJs = readText("src/preload/set.js");
 const setHtml = readText("assets/set.html");
+const installerNsh = readText("installer.nsh");
 const updaterPath = path.join(repoRoot, "src/online-update.js");
 const updaterText = readText("src/online-update.js");
 const runnerPath = path.join(repoRoot, "src/online-upgrade-runner.js");
@@ -91,12 +92,35 @@ expect(
 expect(
   /Wait-Process[\s\S]*Start-Process/.test(deferredInstallerText) &&
     /\/KEEP_APP_DATA/.test(deferredInstallerText) &&
-    /--updated/.test(deferredInstallerText) &&
+    !/--updated/.test(deferredInstallerText) &&
     /windowsHide:\s*true/.test(deferredInstallerText) &&
-    !/["']\/S["']/.test(deferredInstallerText),
+    !/["']\/S["']/.test(deferredInstallerText) &&
+    /-File/.test(deferredInstallerText),
   "UPDATER-DEFERRED-INSTALLER-CONTRACT-BROKEN",
   "high",
-  "Deferred launcher should wait for the current process, run the helper hidden, preserve upgrade arguments, and keep the installer UI visible.",
+  "Deferred launcher should wait for the current process, run a hidden helper script, preserve app data, and keep the installer UI visible.",
+);
+
+expect(
+  /hiprint-online-upgrade-launcher\.log/.test(deferredInstallerText) &&
+    /Out-File/.test(deferredInstallerText) &&
+    /FAILED:/.test(deferredInstallerText) &&
+    /-PassThru/.test(deferredInstallerText),
+  "UPDATER-DEFERRED-INSTALLER-NOT-OBSERVABLE",
+  "high",
+  "Deferred installer failures should be logged to a temp launcher log instead of being swallowed by a hidden helper.",
+);
+
+expect(
+  /\$\{if\}\s+\$\{isUpdated\}[\s\S]{0,160}Goto\s+SkipDataDeletion/.test(
+    installerNsh,
+  ) &&
+    /\$\{GetOptions\}\s+\$R0\s+"\/KEEP_APP_DATA"[\s\S]{0,220}Goto\s+SkipDataDeletion/.test(
+      installerNsh,
+    ),
+  "UPDATER-INSTALLER-DATA-PRESERVATION-BROKEN",
+  "critical",
+  "The NSIS uninstaller should preserve app data on electron-builder upgrade and explicit /KEEP_APP_DATA paths.",
 );
 
 expect(
@@ -196,14 +220,18 @@ if (fs.existsSync(deferredInstallerPath)) {
   );
   expect(
     script.includes("hiprint''s test.exe") &&
+      script.includes("hiprint-online-upgrade-launcher.log") &&
+      script.includes("Out-File") &&
+      script.includes("FAILED:") &&
+      script.includes("-PassThru") &&
       !deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("/S") &&
       deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes(
         "/KEEP_APP_DATA",
       ) &&
-      deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("--updated"),
+      !deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("--updated"),
     "UPDATER-DEFERRED-INSTALLER-ARGS-BROKEN",
     "high",
-    "The installer launch script should quote paths safely and use visible upgrade-preserving arguments.",
+    "The installer launch script should quote paths safely, log helper failures, and use visible app-data-preserving arguments.",
   );
 }
 
