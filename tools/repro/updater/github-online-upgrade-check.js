@@ -18,6 +18,11 @@ const updaterPath = path.join(repoRoot, "src/online-update.js");
 const updaterText = readText("src/online-update.js");
 const runnerPath = path.join(repoRoot, "src/online-upgrade-runner.js");
 const runnerText = readText("src/online-upgrade-runner.js");
+const deferredInstallerPath = path.join(
+  repoRoot,
+  "src/deferred-installer-launcher.js",
+);
+const deferredInstallerText = readText("src/deferred-installer-launcher.js");
 const risks = [];
 
 function expect(condition, id, severity, detail) {
@@ -41,6 +46,13 @@ expect(
 );
 
 expect(
+  fs.existsSync(deferredInstallerPath),
+  "UPDATER-DEFERRED-INSTALLER-MISSING",
+  "high",
+  "Online upgrade should launch the installer from an external process after the current app exits.",
+);
+
+expect(
   /GITHUB_OWNER\s*=\s*"amDosion"/.test(updaterText) &&
     /GITHUB_REPO\s*=\s*"electron-hiprint"/.test(updaterText) &&
     /releases\/latest/.test(updaterText) &&
@@ -60,10 +72,30 @@ expect(
 );
 
 expect(
-  /spawn\(/.test(runnerText) && /\/S/.test(runnerText),
+  /launchInstallerAfterProcessExit/.test(runnerText) &&
+    /\/S/.test(deferredInstallerText),
   "UPDATER-INSTALLER-NOT-LAUNCHED",
   "high",
   "A verified Windows installer should be launched with the silent upgrade argument.",
+);
+
+expect(
+  /launchInstallerAfterProcessExit/.test(runnerText) &&
+    !/childProcess\.spawn/.test(runnerText) &&
+    !/setTimeout\(\s*\(\)\s*=>\s*{\s*helper\.appQuit/.test(runnerText),
+  "UPDATER-INSTALLER-LAUNCHED-BEFORE-QUIT",
+  "high",
+  "The updater should schedule an external launcher, quit the old app, then start the installer after process exit.",
+);
+
+expect(
+  /Wait-Process[\s\S]*Start-Process/.test(deferredInstallerText) &&
+    /\/KEEP_APP_DATA/.test(deferredInstallerText) &&
+    /--updated/.test(deferredInstallerText) &&
+    /windowsHide:\s*true/.test(deferredInstallerText),
+  "UPDATER-DEFERRED-INSTALLER-CONTRACT-BROKEN",
+  "high",
+  "Deferred launcher should wait for the current process, run hidden, and preserve upgrade uninstall arguments.",
 );
 
 expect(
@@ -144,6 +176,33 @@ if (fs.existsSync(updaterPath)) {
     "UPDATER-UNTRUSTED-URL-ACCEPTED",
     "critical",
     "Updater should reject non-HTTPS or non-GitHub download URLs.",
+  );
+}
+
+if (fs.existsSync(deferredInstallerPath)) {
+  const deferredInstaller = require(deferredInstallerPath);
+  const script = deferredInstaller.buildDeferredInstallerScript({
+    installerPath: "C:\\Temp\\hiprint's test.exe",
+    waitPid: 12345,
+  });
+  expect(
+    script.indexOf("Wait-Process") !== -1 &&
+      script.indexOf("Start-Process") !== -1 &&
+      script.indexOf("Wait-Process") < script.indexOf("Start-Process"),
+    "UPDATER-DEFERRED-INSTALLER-ORDER-BROKEN",
+    "high",
+    "The installer launch script must wait for the old process before starting the installer.",
+  );
+  expect(
+    script.includes("hiprint''s test.exe") &&
+      deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("/S") &&
+      deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes(
+        "/KEEP_APP_DATA",
+      ) &&
+      deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("--updated"),
+    "UPDATER-DEFERRED-INSTALLER-ARGS-BROKEN",
+    "high",
+    "The installer launch script should quote paths safely and use silent upgrade-preserving arguments.",
   );
 }
 

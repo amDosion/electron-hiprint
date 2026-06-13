@@ -1,9 +1,11 @@
 "use strict";
 
 const { app, dialog } = require("electron");
-const childProcess = require("node:child_process");
 const path = require("node:path");
 const helper = require("./helper");
+const {
+  launchInstallerAfterProcessExit,
+} = require("./deferred-installer-launcher");
 const {
   GITHUB_LATEST_RELEASE_URL,
   compareVersions,
@@ -14,6 +16,14 @@ const {
 } = require("./online-update");
 
 let onlineUpgradeInProgress = false;
+
+function logOnlineUpgrade(message, error) {
+  if (error) {
+    console.error(`在线升级：${message}`, error);
+    return;
+  }
+  console.log(`在线升级：${message}`);
+}
 
 function sendOnlineUpdateStatus(onStatus, status) {
   if (typeof onStatus === "function") {
@@ -33,20 +43,6 @@ function formatBytes(bytes) {
   return `${(Number(bytes) / 1048576).toFixed(1)} MB`;
 }
 
-function launchInstaller(filePath) {
-  return new Promise((resolve, reject) => {
-    const installer = childProcess.spawn(filePath, ["/S"], {
-      detached: true,
-      stdio: "ignore",
-    });
-    installer.once("error", reject);
-    installer.once("spawn", () => {
-      installer.unref();
-      resolve();
-    });
-  });
-}
-
 async function runOnlineUpgrade(options = {}) {
   const { parentWindow, onStatus, silent = false } = options;
   if (onlineUpgradeInProgress) return { skipped: true, reason: "busy" };
@@ -60,6 +56,7 @@ async function runOnlineUpgrade(options = {}) {
 
   try {
     if (!app.isPackaged) {
+      logOnlineUpgrade("开发环境跳过在线升级");
       if (!silent) {
         await showMessageBox(parentWindow, {
           type: "info",
@@ -72,6 +69,7 @@ async function runOnlineUpgrade(options = {}) {
       return { skipped: true, reason: "development" };
     }
 
+    logOnlineUpgrade("开始检查 GitHub Release");
     const release = await getLatestGithubRelease();
     const latestVersion = getReleaseVersion(release);
     if (!latestVersion) {
@@ -80,6 +78,7 @@ async function runOnlineUpgrade(options = {}) {
 
     const currentVersion = app.getVersion();
     if (compareVersions(latestVersion, currentVersion) <= 0) {
+      logOnlineUpgrade(`当前已是最新版本 ${currentVersion}`);
       if (!silent) {
         await showMessageBox(parentWindow, {
           type: "info",
@@ -93,6 +92,9 @@ async function runOnlineUpgrade(options = {}) {
     }
 
     const asset = selectReleaseAsset(release, process.platform, process.arch);
+    logOnlineUpgrade(
+      `发现新版本 ${latestVersion}，当前版本 ${currentVersion}，安装包 ${asset.name}`,
+    );
     const confirmResult = await showMessageBox(parentWindow, {
       type: "question",
       title: "发现新版本",
@@ -109,10 +111,12 @@ async function runOnlineUpgrade(options = {}) {
       noLink: true,
     });
     if (confirmResult.response !== 0) {
+      logOnlineUpgrade(`用户取消升级到 ${latestVersion}`);
       return { skipped: true, reason: "cancelled", latestVersion };
     }
 
     const downloadPath = path.join(app.getPath("temp"), asset.name);
+    logOnlineUpgrade(`开始下载安装包 ${asset.name}`);
     sendOnlineUpdateStatus(onStatus, {
       busy: true,
       state: "downloading",
@@ -129,20 +133,22 @@ async function runOnlineUpgrade(options = {}) {
         });
       },
     });
+    logOnlineUpgrade(
+      `安装包校验通过 ${downloaded.filePath} (${downloaded.sha256})`,
+    );
 
     sendOnlineUpdateStatus(onStatus, {
       busy: true,
       state: "installing",
-      message: "安装包校验通过，正在启动升级...",
+      message: "安装包校验通过，正在退出并启动升级...",
     });
-    await launchInstaller(downloaded.filePath);
+    await launchInstallerAfterProcessExit(downloaded.filePath);
     installerLaunched = true;
-    setTimeout(() => {
-      helper.appQuit();
-    }, 500);
+    logOnlineUpgrade("已安排安装器等待当前进程退出后启动");
+    helper.appQuit();
     return { installerLaunched: true, latestVersion };
   } catch (error) {
-    console.error("在线升级失败:", error);
+    logOnlineUpgrade("失败", error);
     sendOnlineUpdateStatus(onStatus, {
       busy: false,
       state: "error",

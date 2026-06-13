@@ -48,6 +48,8 @@ Move online upgrade out of advanced settings and into the tray right-click menu 
 - The updater rejects unsupported platforms, missing digest, non-HTTPS URLs, and non-GitHub download URLs.
 - The updater downloads to a temp file and verifies the SHA256 digest before running the installer.
 - The installer is launched with the silent upgrade argument after user confirmation.
+- The installer is launched by a detached helper only after the current app process exits, avoiding upgrade/restart races with the running app.
+- Online upgrade writes check/download/verify/install scheduling/error stages into the software log.
 - The upgrade path does not introduce a new runtime dependency.
 
 ## Implementation Progress
@@ -68,3 +70,9 @@ node tools/repro/updater/github-online-upgrade-check.js
 node --check main.js src/online-update.js src/online-upgrade-runner.js src/set.js src/preload/set.js tools/repro/updater/github-online-upgrade-check.js
 npm run build-w-64
 ```
+
+2026-06-13 restart-race hardening:
+
+- Added `src/deferred-installer-launcher.js` so the Windows installer is scheduled from a detached PowerShell helper that waits for the current process to exit before running the NSIS installer.
+- The online upgrade runner now logs check/download/verify/install scheduling/error stages to the software log.
+- The regression script now asserts the deferred launch order, safe path quoting, and `/S /KEEP_APP_DATA --updated` upgrade arguments.
