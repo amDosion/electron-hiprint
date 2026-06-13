@@ -8,7 +8,6 @@
 const {
   app,
   BrowserWindow,
-  WebContentsView,
   ipcMain,
   dialog,
 } = require("electron");
@@ -17,6 +16,7 @@ const path = require("path");
 const db = require("../tools/database");
 const { getAssetUrl } = require("./asset-url");
 const { buildSafeLogQuery } = require("./log-query-guard");
+const { attachLoadingView } = require("./loading-view");
 
 function createPrintLogWindow() {
   const windowOptions = {
@@ -36,7 +36,7 @@ function createPrintLogWindow() {
   PRINT_LOG_WINDOW = new BrowserWindow(windowOptions);
 
   // 添加加载页面 解决白屏的问题
-  loadingView(windowOptions);
+  attachLoadingView(PRINT_LOG_WINDOW, windowOptions, getAssetUrl("loading.html"));
 
   // 加载打印日志页面
   PRINT_LOG_WINDOW.loadURL(getAssetUrl("printLog.html"));
@@ -53,38 +53,6 @@ function createPrintLogWindow() {
   PRINT_LOG_WINDOW.on("closed", removePrintLogEvent);
 
   return PRINT_LOG_WINDOW;
-}
-
-/**
- * @description: 加载等待页面，解决主窗口白屏问题
- * @param {Object} windowOptions 主窗口配置
- * @return {void}
- */
-function loadingView(windowOptions) {
-  const loadingContentView = new WebContentsView();
-  PRINT_LOG_WINDOW.contentView.addChildView(loadingContentView);
-  loadingContentView.setBounds({
-    x: 0,
-    y: 0,
-    width: windowOptions.width,
-    height: windowOptions.height,
-  });
-
-  loadingContentView.webContents.loadURL(getAssetUrl("loading.html"));
-
-  const removeLoadingView = () => {
-    if (
-      loadingContentView.webContents &&
-      !loadingContentView.webContents.isDestroyed()
-    ) {
-      loadingContentView.webContents.destroy();
-    }
-    PRINT_LOG_WINDOW.contentView.removeChildView(loadingContentView);
-  };
-
-  // dom 加载完毕移除加载视图；加载失败也清理，避免 WebContents 泄漏
-  PRINT_LOG_WINDOW.webContents.on("dom-ready", removeLoadingView);
-  PRINT_LOG_WINDOW.webContents.on("did-fail-load", removeLoadingView);
 }
 
 /**

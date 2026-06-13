@@ -9,7 +9,6 @@
 const {
   app,
   BrowserWindow,
-  WebContentsView,
   ipcMain,
   dialog,
   shell,
@@ -18,6 +17,7 @@ const path = require("path");
 const fs = require("node:fs");
 const { store } = require("../tools/utils");
 const { getAssetUrl } = require("./asset-url");
+const { attachLoadingView } = require("./loading-view");
 const helper = require("./helper");
 
 /**
@@ -45,7 +45,7 @@ async function createSetWindow() {
   SET_WINDOW = new BrowserWindow(windowOptions);
 
   // 添加加载页面 解决白屏的问题
-  loadingView(windowOptions);
+  attachLoadingView(SET_WINDOW, windowOptions, getAssetUrl("loading.html"));
 
   // 加载设置渲染进程页面
   SET_WINDOW.webContents.loadURL(getAssetUrl("set.html"));
@@ -62,38 +62,6 @@ async function createSetWindow() {
   SET_WINDOW.on("closed", removeEvent);
 
   return SET_WINDOW;
-}
-
-/**
- * @description: 加载等待页面，解决主窗口白屏问题
- * @param {Object} windowOptions 主窗口配置
- * @return {void}
- */
-function loadingView(windowOptions) {
-  const loadingContentView = new WebContentsView();
-  SET_WINDOW.contentView.addChildView(loadingContentView);
-  loadingContentView.setBounds({
-    x: 0,
-    y: 0,
-    width: windowOptions.width,
-    height: windowOptions.height,
-  });
-
-  loadingContentView.webContents.loadURL(getAssetUrl("loading.html"));
-
-  const removeLoadingView = () => {
-    if (
-      loadingContentView.webContents &&
-      !loadingContentView.webContents.isDestroyed()
-    ) {
-      loadingContentView.webContents.destroy();
-    }
-    SET_WINDOW.contentView.removeChildView(loadingContentView);
-  };
-
-  // dom 加载完毕移除加载视图；加载失败也清理，避免 WebContents 泄漏
-  SET_WINDOW.webContents.on("dom-ready", removeLoadingView);
-  SET_WINDOW.webContents.on("did-fail-load", removeLoadingView);
 }
 
 /**

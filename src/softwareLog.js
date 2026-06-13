@@ -2,13 +2,13 @@
 const {
   app,
   BrowserWindow,
-  WebContentsView,
   ipcMain,
   shell,
 } = require("electron");
 const path = require("path");
 const { store } = require("../tools/utils");
 const { getAssetUrl } = require("./asset-url");
+const { attachLoadingView } = require("./loading-view");
 const softwareLogStore = require("./software-log-store");
 
 // 软件日志目录：与 main.js 同口径（store.logPath 优先，否则系统 logs 目录）。
@@ -34,7 +34,11 @@ function createSoftwareLogWindow() {
   SOFTWARE_LOG_WINDOW = new BrowserWindow(windowOptions);
 
   // 添加加载页面 解决白屏的问题
-  loadingView(windowOptions);
+  attachLoadingView(
+    SOFTWARE_LOG_WINDOW,
+    windowOptions,
+    getAssetUrl("loading.html"),
+  );
 
   // 加载软件日志页面
   SOFTWARE_LOG_WINDOW.loadURL(getAssetUrl("softwareLog.html"));
@@ -51,38 +55,6 @@ function createSoftwareLogWindow() {
   SOFTWARE_LOG_WINDOW.on("closed", removeSoftwareLogEvent);
 
   return SOFTWARE_LOG_WINDOW;
-}
-
-/**
- * @description: 加载等待页面，解决主窗口白屏问题
- * @param {Object} windowOptions 主窗口配置
- * @return {void}
- */
-function loadingView(windowOptions) {
-  const loadingContentView = new WebContentsView();
-  SOFTWARE_LOG_WINDOW.contentView.addChildView(loadingContentView);
-  loadingContentView.setBounds({
-    x: 0,
-    y: 0,
-    width: windowOptions.width,
-    height: windowOptions.height,
-  });
-
-  loadingContentView.webContents.loadURL(getAssetUrl("loading.html"));
-
-  const removeLoadingView = () => {
-    if (
-      loadingContentView.webContents &&
-      !loadingContentView.webContents.isDestroyed()
-    ) {
-      loadingContentView.webContents.destroy();
-    }
-    SOFTWARE_LOG_WINDOW.contentView.removeChildView(loadingContentView);
-  };
-
-  // dom 加载完毕移除加载视图；加载失败也清理，避免 WebContents 泄漏
-  SOFTWARE_LOG_WINDOW.webContents.on("dom-ready", removeLoadingView);
-  SOFTWARE_LOG_WINDOW.webContents.on("did-fail-load", removeLoadingView);
 }
 
 /**

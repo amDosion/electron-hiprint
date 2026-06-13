@@ -7,7 +7,6 @@
 const {
   app,
   BrowserWindow,
-  WebContentsView,
   ipcMain,
   Notification,
   Tray,
@@ -25,6 +24,7 @@ const setSetup = require("./src/set");
 const printLogSetup = require("./src/printLog");
 const softwareLogSetup = require("./src/softwareLog");
 const { getAssetUrl } = require("./src/asset-url");
+const { attachLoadingView } = require("./src/loading-view");
 const {
   registerAssetSchemeAsPrivileged,
   registerAssetProtocol,
@@ -377,7 +377,7 @@ async function createWindow() {
   MAIN_WINDOW = new BrowserWindow(windowOptions);
 
   // 添加加载页面 解决白屏的问题
-  loadingView(windowOptions);
+  attachLoadingView(MAIN_WINDOW, windowOptions, getAssetUrl("loading.html"));
 
   // 初始化系统设置
   systemSetup();
@@ -462,38 +462,6 @@ function ensureBuiltinPlugin() {
   } catch (error) {
     console.error(`==> 内置渲染插件解析失败: ${error.message} <==`);
   }
-}
-
-/**
- * @description: 加载等待页面，解决主窗口白屏问题
- * @param {Object} windowOptions 主窗口配置
- * @return {Void}
- */
-function loadingView(windowOptions) {
-  const loadingContentView = new WebContentsView();
-  MAIN_WINDOW.contentView.addChildView(loadingContentView);
-  loadingContentView.setBounds({
-    x: 0,
-    y: 0,
-    width: windowOptions.width,
-    height: windowOptions.height,
-  });
-
-  loadingContentView.webContents.loadURL(getAssetUrl("loading.html"));
-
-  const removeLoadingView = () => {
-    if (
-      loadingContentView.webContents &&
-      !loadingContentView.webContents.isDestroyed()
-    ) {
-      loadingContentView.webContents.destroy();
-    }
-    MAIN_WINDOW.contentView.removeChildView(loadingContentView);
-  };
-
-  // dom 加载完毕移除加载视图；加载失败也清理，避免 WebContents 泄漏
-  MAIN_WINDOW.webContents.on("dom-ready", removeLoadingView);
-  MAIN_WINDOW.webContents.on("did-fail-load", removeLoadingView);
 }
 
 /**
