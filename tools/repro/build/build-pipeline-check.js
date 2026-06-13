@@ -23,10 +23,12 @@ function record(risks, id, ok, detail) {
 function main() {
   const risks = [];
   const packageJson = JSON.parse(read("package.json"));
+  const packageLock = JSON.parse(read("package-lock.json") || "{}");
   const scripts = packageJson.scripts || {};
   const buildWrapper = read("tools/build-package.js");
   const builderRunner = read("tools/run-electron-builder.js");
   const renameTool = read("tools/rename.js");
+  const runtimeUtils = read("tools/utils.js");
   const installersWorkflow = read(".github/workflows/installers.yml");
   const releaseWorkflow = read(".github/workflows/release.yml");
   const autoTagWorkflow = read(".github/workflows/plugin-bump.yml");
@@ -50,9 +52,12 @@ function main() {
 
   record(
     risks,
-    "UNUSED-IPP-DEPENDENCY-PRESENT",
-    !Object.prototype.hasOwnProperty.call(packageJson.dependencies || {}, "ipp"),
-    "The direct ipp dependency is unused and its latest npm metadata declares node <4.0.0, which emits EBADENGINE under the Node 24 installer workflow.",
+    "IPP-RUNTIME-DEPENDENCY-MISSING",
+    Object.prototype.hasOwnProperty.call(packageJson.dependencies || {}, "ipp") &&
+      packageLock.packages &&
+      packageLock.packages["node_modules/ipp"] &&
+      runtimeUtils.includes('require("ipp")'),
+    "tools/utils.js handles ippPrint/ippRequest at runtime, so ipp must remain a direct packaged dependency and be present in package-lock.json.",
   );
 
   record(
