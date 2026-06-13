@@ -22,7 +22,7 @@ The regression script now checks that:
 
 - GitHub latest release lookup still uses `amDosion/electron-hiprint`.
 - Release asset SHA256 digest verification is required.
-- The verified installer is launched with `/S`.
+- The verified installer is launched without `/S` so the user can see the installer UI after confirming the upgrade.
 - The settings page and settings preload no longer expose online-upgrade IPC or buttons.
 - The tray context menu exposes `在线升级` and calls the program-level runner.
 
@@ -47,7 +47,7 @@ Move online upgrade out of advanced settings and into the tray right-click menu 
 - The updater chooses the Windows x64 NSIS installer asset for the current package.
 - The updater rejects unsupported platforms, missing digest, non-HTTPS URLs, and non-GitHub download URLs.
 - The updater downloads to a temp file and verifies the SHA256 digest before running the installer.
-- The installer is launched with the silent upgrade argument after user confirmation.
+- The installer is launched with visible installer UI after user confirmation.
 - The installer is launched by a detached helper only after the current app process exits, avoiding upgrade/restart races with the running app.
 - Online upgrade writes check/download/verify/install scheduling/error stages into the software log.
 - The upgrade path does not introduce a new runtime dependency.
@@ -75,4 +75,4 @@ npm run build-w-64
 
 - Added `src/deferred-installer-launcher.js` so the Windows installer is scheduled from a detached PowerShell helper that waits for the current process to exit before running the NSIS installer.
 - The online upgrade runner now logs check/download/verify/install scheduling/error stages to the software log.
-- The regression script now asserts the deferred launch order, safe path quoting, and `/S /KEEP_APP_DATA --updated` upgrade arguments.
+- The regression script now asserts the deferred launch order, safe path quoting, visible installer UI, and `/KEEP_APP_DATA --updated` upgrade arguments.

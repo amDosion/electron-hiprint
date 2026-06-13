@@ -140,11 +140,11 @@ async function runOnlineUpgrade(options = {}) {
     sendOnlineUpdateStatus(onStatus, {
       busy: true,
       state: "installing",
-      message: "安装包校验通过，正在退出并启动升级...",
+      message: "安装包校验通过，正在退出并打开安装器...",
     });
     await launchInstallerAfterProcessExit(downloaded.filePath);
     installerLaunched = true;
-    logOnlineUpgrade("已安排安装器等待当前进程退出后启动");
+    logOnlineUpgrade("已安排安装器等待当前进程退出后打开");
     helper.appQuit();
     return { installerLaunched: true, latestVersion };
   } catch (error) {

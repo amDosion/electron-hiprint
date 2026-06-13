@@ -2,7 +2,7 @@
 
 const childProcess = require("node:child_process");
 
-const WINDOWS_UPGRADE_INSTALLER_ARGS = ["/S", "/KEEP_APP_DATA", "--updated"];
+const WINDOWS_UPGRADE_INSTALLER_ARGS = ["/KEEP_APP_DATA", "--updated"];
 
 function quotePowerShellSingleQuoted(value) {
   return `'${String(value).replace(/'/g, "''")}'`;

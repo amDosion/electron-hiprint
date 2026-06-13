@@ -73,10 +73,10 @@ expect(
 
 expect(
   /launchInstallerAfterProcessExit/.test(runnerText) &&
-    /\/S/.test(deferredInstallerText),
+    !/["']\/S["']/.test(deferredInstallerText),
   "UPDATER-INSTALLER-NOT-LAUNCHED",
   "high",
-  "A verified Windows installer should be launched with the silent upgrade argument.",
+  "A verified Windows installer should be launched without forcing silent mode.",
 );
 
 expect(
@@ -92,10 +92,11 @@ expect(
   /Wait-Process[\s\S]*Start-Process/.test(deferredInstallerText) &&
     /\/KEEP_APP_DATA/.test(deferredInstallerText) &&
     /--updated/.test(deferredInstallerText) &&
-    /windowsHide:\s*true/.test(deferredInstallerText),
+    /windowsHide:\s*true/.test(deferredInstallerText) &&
+    !/["']\/S["']/.test(deferredInstallerText),
   "UPDATER-DEFERRED-INSTALLER-CONTRACT-BROKEN",
   "high",
-  "Deferred launcher should wait for the current process, run hidden, and preserve upgrade uninstall arguments.",
+  "Deferred launcher should wait for the current process, run the helper hidden, preserve upgrade arguments, and keep the installer UI visible.",
 );
 
 expect(
@@ -195,14 +196,14 @@ if (fs.existsSync(deferredInstallerPath)) {
   );
   expect(
     script.includes("hiprint''s test.exe") &&
-      deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("/S") &&
+      !deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("/S") &&
       deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes(
         "/KEEP_APP_DATA",
       ) &&
       deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("--updated"),
     "UPDATER-DEFERRED-INSTALLER-ARGS-BROKEN",
     "high",
-    "The installer launch script should quote paths safely and use silent upgrade-preserving arguments.",
+    "The installer launch script should quote paths safely and use visible upgrade-preserving arguments.",
   );
 }
 
