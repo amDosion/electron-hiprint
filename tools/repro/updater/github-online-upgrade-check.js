@@ -108,6 +108,10 @@ expect(
     /-PassThru/.test(deferredInstallerText) &&
     /-ErrorAction Stop/.test(deferredInstallerText) &&
     /waitForLauncherReady/.test(deferredInstallerText) &&
+    /buildLauncherBootstrapScript/.test(deferredInstallerText) &&
+    /bootstrap started helper pid/.test(deferredInstallerText) &&
+    /BOOTSTRAP_FAILED/.test(deferredInstallerText) &&
+    /Start-Process -FilePath \$powershell/.test(deferredInstallerText) &&
     /ready\s+\$\{launcherId\}/.test(deferredInstallerText) &&
     !/detached:\s*true/.test(deferredInstallerText),
   "UPDATER-DEFERRED-INSTALLER-NOT-OBSERVABLE",
@@ -243,10 +247,27 @@ if (fs.existsSync(deferredInstallerPath)) {
 
   expect(
     typeof deferredInstaller.waitForLauncherReady === "function" &&
+      typeof deferredInstaller.buildLauncherBootstrapScript === "function" &&
       Number.isFinite(deferredInstaller.DEFAULT_LAUNCHER_READY_TIMEOUT_MS),
     "UPDATER-DEFERRED-INSTALLER-READY-WAIT-MISSING",
     "high",
     "The app should wait for an explicit helper ready marker before quitting.",
+  );
+
+  const bootstrapScript = deferredInstaller.buildLauncherBootstrapScript({
+    launcherScriptPath: "C:\\Temp\\helper's launcher.ps1",
+    launcherLogPath: "C:\\Temp\\hiprint launcher.log",
+  });
+  expect(
+    bootstrapScript.includes("helper''s launcher.ps1") &&
+      bootstrapScript.includes("hiprint launcher.log") &&
+      bootstrapScript.includes("Start-Process -FilePath $powershell") &&
+      bootstrapScript.includes("bootstrap started helper pid") &&
+      bootstrapScript.includes("BOOTSTRAP_FAILED") &&
+      bootstrapScript.includes("-File"),
+    "UPDATER-DEFERRED-INSTALLER-BOOTSTRAP-BROKEN",
+    "high",
+    "The Electron process should start only a short bootstrap script; PowerShell should independently start the helper that waits for app exit.",
   );
 }
 

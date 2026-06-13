@@ -84,4 +84,4 @@ npm run build-w-64
 - The helper logs wait/launch/failure stages to `%TEMP%\hiprint-online-upgrade-launcher.log` so hidden helper failures are diagnosable.
 - The helper remains hidden, but the NSIS installer is started with `Start-Process -WindowStyle Normal -PassThru`.
 - The regression script also asserts that `installer.nsh` preserves AppData on both electron-builder upgrade and explicit `/KEEP_APP_DATA` paths.
-- The app now waits for a `ready <launcher id>` marker in the launcher log before quitting, and avoids `detached: true` because detached PowerShell spawned from Node exited without running the script on the verified Windows environment.
+- The app now waits for a `ready <launcher id>` marker in the launcher log before quitting, and avoids Node `detached: true`; Electron starts only a short bootstrap PowerShell, and that bootstrap starts the durable helper with PowerShell `Start-Process` so it survives the app exit and can open the visible installer.

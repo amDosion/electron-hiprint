@@ -24,6 +24,13 @@ function getLauncherScriptPath() {
   );
 }
 
+function getBootstrapScriptPath() {
+  return path.join(
+    os.tmpdir(),
+    `hiprint-online-upgrade-bootstrap-${process.pid}-${Date.now()}.ps1`,
+  );
+}
+
 function getLauncherId(waitPid) {
   return `${waitPid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -65,6 +72,46 @@ function buildDeferredInstallerScript(options = {}) {
     '  Write-LauncherLog "started installer pid $($process.Id)"',
     "} catch {",
     '  Write-LauncherLog "FAILED: $($_.Exception.Message)"',
+    "  throw",
+    "}",
+  ].join("\r\n");
+}
+
+function buildLauncherBootstrapScript(options = {}) {
+  const launcherScriptPath = options.launcherScriptPath;
+  const launcherLogPath = options.launcherLogPath || getLauncherLogPath();
+  const powershellPath = options.powershellPath || "powershell.exe";
+
+  if (!launcherScriptPath) {
+    throw new Error("升级安装器启动脚本路径不能为空");
+  }
+
+  const helperArgs = [
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-WindowStyle",
+    "Hidden",
+    "-File",
+    launcherScriptPath,
+  ]
+    .map(quotePowerShellSingleQuoted)
+    .join(", ");
+
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `$log = ${quotePowerShellSingleQuoted(launcherLogPath)}`,
+    "function Write-LauncherLog($message) {",
+    "  $timestamp = [DateTime]::Now.ToString('s')",
+    '  "$timestamp  $message" | Out-File -FilePath $log -Append -Encoding utf8',
+    "}",
+    `$powershell = ${quotePowerShellSingleQuoted(powershellPath)}`,
+    `$helperArgs = @(${helperArgs})`,
+    "try {",
+    "  $process = Start-Process -FilePath $powershell -ArgumentList $helperArgs -WindowStyle Hidden -PassThru -ErrorAction Stop",
+    '  Write-LauncherLog "bootstrap started helper pid $($process.Id)"',
+    "} catch {",
+    '  Write-LauncherLog "BOOTSTRAP_FAILED: $($_.Exception.Message)"',
     "  throw",
     "}",
   ].join("\r\n");
@@ -136,8 +183,25 @@ function launchInstallerAfterProcessExit(installerPath, options = {}) {
       reject(error);
       return;
     }
+
+    let bootstrapScriptPath;
+    try {
+      const bootstrapScript = buildLauncherBootstrapScript({
+        launcherScriptPath,
+        launcherLogPath,
+        powershellPath: options.powershellPath || "powershell.exe",
+      });
+      bootstrapScriptPath = writeLauncherScript(bootstrapScript, {
+        launcherScriptPath:
+          options.bootstrapScriptPath || getBootstrapScriptPath(),
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
     const spawn = options.spawn || childProcess.spawn;
-    const launcher = spawn(
+    const launcherBootstrap = spawn(
       options.powershellPath || "powershell.exe",
       [
         "-NoProfile",
@@ -146,25 +210,39 @@ function launchInstallerAfterProcessExit(installerPath, options = {}) {
         "-WindowStyle",
         "Hidden",
         "-File",
-        launcherScriptPath,
+        bootstrapScriptPath,
       ],
       {
         stdio: "ignore",
         windowsHide: true,
       },
     );
-    launcher.once("error", reject);
-    launcher.once("spawn", () => {
+    let settled = false;
+    function rejectOnce(error) {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    }
+    function resolveOnce() {
+      if (settled) return;
+      settled = true;
+      resolve();
+    }
+
+    launcherBootstrap.once("error", rejectOnce);
+    launcherBootstrap.once("exit", (code) => {
+      if (!settled && code !== 0) {
+        rejectOnce(new Error(`升级安装器启动器初始化失败，退出码 ${code}`));
+      }
+    });
+    launcherBootstrap.once("spawn", () => {
       waitForLauncherReady({
         launcherLogPath,
         launcherId,
         timeoutMs: options.readyTimeoutMs,
       })
-        .then(() => {
-          launcher.unref();
-          resolve();
-        })
-        .catch(reject);
+        .then(resolveOnce)
+        .catch(rejectOnce);
     });
   });
 }
@@ -174,6 +252,7 @@ module.exports = {
   LAUNCHER_LOG_FILE,
   WINDOWS_UPGRADE_INSTALLER_ARGS,
   buildDeferredInstallerScript,
+  buildLauncherBootstrapScript,
   getLauncherId,
   getLauncherLogPath,
   launchInstallerAfterProcessExit,
