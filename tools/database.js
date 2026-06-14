@@ -73,6 +73,17 @@ db.serialize(() => {
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_software_logs_day ON software_logs(day)`,
   );
+  // 软件日志窗口按 day 取末尾日志：WHERE day = ? ORDER BY id DESC LIMIT ?
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_software_logs_day_id ON software_logs(day, id DESC)`,
+  );
+  // 打印记录默认按最近记录展示，并被打印状态查询复用。
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_print_logs_timestamp_id ON print_logs(timestamp DESC, id DESC)`,
+  );
+  db.run(
+    `CREATE INDEX IF NOT EXISTS idx_print_logs_template_timestamp_id ON print_logs(templateId, timestamp DESC, id DESC)`,
+  );
 });
 
 db.getDatabasePath = () => dbPath;

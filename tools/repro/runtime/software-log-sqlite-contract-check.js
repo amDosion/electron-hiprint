@@ -65,6 +65,24 @@ expect(
   /getDatabasePath\s*=\s*\(\)\s*=>\s*dbPath/.test(files.database),
 );
 expect(
+  "database-indexes-software-tail-read",
+  /idx_software_logs_day_id[\s\S]*ON software_logs\(day, id DESC\)/.test(
+    files.database,
+  ),
+);
+expect(
+  "database-indexes-print-latest-read",
+  /idx_print_logs_timestamp_id[\s\S]*ON print_logs\(timestamp DESC, id DESC\)/.test(
+    files.database,
+  ),
+);
+expect(
+  "database-indexes-print-template-status-read",
+  /idx_print_logs_template_timestamp_id[\s\S]*ON print_logs\(templateId, timestamp DESC, id DESC\)/.test(
+    files.database,
+  ),
+);
+expect(
   "software-log-store-exposes-database-path",
   /getDatabasePath/.test(files.softwareLogStore),
 );

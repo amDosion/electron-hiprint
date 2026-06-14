@@ -75,7 +75,10 @@ expectAccept(
       "whereClause 不符合预期",
     );
     assert(r.params.length === 4, "params 数量不符");
-    assert(r.orderBy === " ORDER BY timestamp DESC", "orderBy 不符合预期");
+    assert(
+      r.orderBy === " ORDER BY timestamp DESC, id DESC",
+      "orderBy 不符合预期",
+    );
     assert(r.limit === 50 && r.offset === 50, "分页计算错误");
   },
 );
@@ -85,6 +88,10 @@ expectAccept(
   { condition: [], params: [], page: {}, sort: {} },
   (r) => {
     assert(r.whereClause === "", "空条件不应产生 WHERE");
+    assert(
+      r.orderBy === " ORDER BY timestamp DESC, id DESC",
+      "默认排序应返回最新打印记录",
+    );
     assert(r.limit === 20 && r.offset === 0, "默认分页错误");
   },
 );

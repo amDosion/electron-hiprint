@@ -14,20 +14,36 @@ const fs = require("fs");
 const electron = require("electron");
 const { app } = electron;
 const dayjs = require("dayjs");
+const sqlite3 = require("sqlite3").verbose();
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hiprint-swlog-"));
 Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
 app.setPath("userData", tmpDir);
 
-function finish(result) {
-  result.failed = Boolean(result.failed);
-  console.log("STORE_RESULT " + JSON.stringify(result));
+function cleanupAndExit(result) {
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   } catch {
     /* 清理失败忽略 */
   }
   app.exit(result.failed ? 1 : 0);
+}
+
+function finish(result) {
+  result.failed = Boolean(result.failed);
+  console.log("STORE_RESULT " + JSON.stringify(result));
+  try {
+    const databaseModulePath = path.join(__dirname, "../../../tools/database");
+    const cached = require.cache[require.resolve(databaseModulePath)];
+    const db = cached && cached.exports;
+    if (db && typeof db.close === "function") {
+      db.close(() => cleanupAndExit(result));
+      return;
+    }
+  } catch {
+    /* 关闭失败继续退出 */
+  }
+  cleanupAndExit(result);
 }
 
 const killTimer = setTimeout(
@@ -65,11 +81,23 @@ app.whenReady().then(async () => {
     const dates = await store.listDates();
     const log = await store.readLog(today);
     const bad = await store.readLog("not-a-date");
+    const indexRows = await new Promise((resolve) => {
+      const db = new sqlite3.Database(store.getDatabasePath());
+      db.all(
+        "SELECT name FROM sqlite_master WHERE type = 'index' ORDER BY name",
+        [],
+        (_err, rows) => {
+          db.close(() => resolve(Array.isArray(rows) ? rows : []));
+        },
+      );
+    });
+    const indexes = indexRows.map((row) => row.name);
 
     result.dates = dates;
     result.lineCount = log.lines.length;
     result.levels = log.lines.map((l) => l.level);
     result.firstMsg = log.lines[0] ? log.lines[0].msg : null;
+    result.indexes = indexes;
 
     if (!dates.includes(today)) {
       result.failed = true;
@@ -100,6 +128,16 @@ app.whenReady().then(async () => {
     if (bad.lines.length !== 0) {
       result.failed = true;
       result.steps.push({ step: "bad-date-not-empty", got: bad });
+    }
+    for (const name of [
+      "idx_software_logs_day_id",
+      "idx_print_logs_timestamp_id",
+      "idx_print_logs_template_timestamp_id",
+    ]) {
+      if (!indexes.includes(name)) {
+        result.failed = true;
+        result.steps.push({ step: "index-missing", name, got: indexes });
+      }
     }
   } catch (err) {
     result.failed = true;

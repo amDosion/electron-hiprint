@@ -41,8 +41,43 @@ function expectLoadingBeforeWindowLoad(fileKey, assetName) {
   );
 }
 
+function expectIpcBeforeWindowLoad(fileKey, initCall, assetName) {
+  const text = files[fileKey];
+  const initIndex = text.indexOf(initCall);
+  const loadIndex = text.indexOf(`getAssetUrl("${assetName}")`);
+  expect(
+    initIndex >= 0 && loadIndex >= 0 && initIndex < loadIndex,
+    `${fileKey.toUpperCase()}-IPC-NOT-READY-BEFORE-LOAD`,
+    "high",
+    `${fileKey} should register IPC handlers before loading ${assetName}; the renderer requests data as soon as it mounts.`,
+  );
+}
+
 expectLoadingBeforeWindowLoad("printLog", "printLog.html");
 expectLoadingBeforeWindowLoad("softwareLog", "softwareLog.html");
+expectIpcBeforeWindowLoad("printLog", "initPrintLogEvent();", "printLog.html");
+expectIpcBeforeWindowLoad(
+  "softwareLog",
+  "initSoftwareLogEvent();",
+  "softwareLog.html",
+);
+
+expect(
+  /await\s+PRINT_LOG_WINDOW\.loadURL\(\s*getAssetUrl\("printLog\.html"\)\s*\)/.test(
+    files.printLog,
+  ),
+  "PRINTLOG-LOADURL-NOT-AWAITED",
+  "medium",
+  "Print log window creation should observe app:// load failures instead of leaving them as unhandled async work.",
+);
+expect(
+  /await\s+SOFTWARE_LOG_WINDOW\.loadURL\(\s*getAssetUrl\("softwareLog\.html"\)\s*\)/.test(
+    files.softwareLog,
+  ),
+  "SOFTWARELOG-LOADURL-NOT-AWAITED",
+  "medium",
+  "Software log window creation should observe app:// load failures instead of leaving them as unhandled async work.",
+);
 
 expect(
   /once\(\s*["']dom-ready["']\s*,\s*removeLoadingView\s*\)/.test(

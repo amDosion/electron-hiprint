@@ -18,7 +18,8 @@ const { getAssetUrl } = require("./asset-url");
 const { buildSafeLogQuery } = require("./log-query-guard");
 const { attachLoadingView } = require("./loading-view");
 
-function createPrintLogWindow() {
+async function createPrintLogWindow() {
+  const openedAt = Date.now();
   const windowOptions = {
     width: 1080,
     height: 600,
@@ -34,23 +35,28 @@ function createPrintLogWindow() {
 
   // 创建打印日志窗口
   PRINT_LOG_WINDOW = new BrowserWindow(windowOptions);
+  attachPrintLogLoadDiagnostics(PRINT_LOG_WINDOW, openedAt);
 
   // 添加加载页面 解决白屏的问题
   attachLoadingView(PRINT_LOG_WINDOW, windowOptions, getAssetUrl("loading.html"));
 
+  // 先注册 IPC，再加载页面；渲染端 mounted 后会立即请求打印记录。
+  initPrintLogEvent();
+
+  // 监听退出，移除所有事件；必须早于 loadURL，覆盖加载期间关闭窗口的情况。
+  PRINT_LOG_WINDOW.on("closed", removePrintLogEvent);
+
   // 加载打印日志页面
-  PRINT_LOG_WINDOW.loadURL(getAssetUrl("printLog.html"));
+  try {
+    await PRINT_LOG_WINDOW.loadURL(getAssetUrl("printLog.html"));
+  } catch (error) {
+    console.error(`打印记录窗口：loadURL 失败 ${formatError(error)}`);
+  }
 
   // 未打包时打开开发者工具
   if (!app.isPackaged) {
     PRINT_LOG_WINDOW.webContents.openDevTools();
   }
-
-  // 绑定窗口事件
-  initPrintLogEvent();
-
-  // 监听退出，移除所有事件
-  PRINT_LOG_WINDOW.on("closed", removePrintLogEvent);
 
   return PRINT_LOG_WINDOW;
 }
@@ -121,6 +127,30 @@ function fetchPrintLogs(event, payload) {
     });
 }
 
+function formatError(error) {
+  return error && error.message ? error.message : String(error);
+}
+
+function attachPrintLogLoadDiagnostics(win, openedAt) {
+  const elapsed = () => Date.now() - openedAt;
+  win.webContents.once("dom-ready", () => {
+    console.log(`打印记录窗口：dom-ready ${elapsed()}ms`);
+  });
+  win.webContents.once("did-finish-load", () => {
+    console.log(`打印记录窗口：did-finish-load ${elapsed()}ms`);
+  });
+  win.webContents.once("did-fail-load", (_event, code, description, url) => {
+    console.error(
+      `打印记录窗口：did-fail-load ${elapsed()}ms ${code} ${description || ""} ${url || ""}`,
+    );
+  });
+  win.webContents.once("render-process-gone", (_event, details) => {
+    console.error(
+      `打印记录窗口：render-process-gone ${elapsed()}ms ${details.reason}`,
+    );
+  });
+}
+
 /**
  * @description: 清空打印日志
  * @param {IpcMainEvent} event 事件
@@ -175,6 +205,7 @@ function rePrint(event, data) {
  * @return {void}
  */
 function initPrintLogEvent() {
+  removePrintLogIpcHandlers();
   ipcMain.on("request-logs", fetchPrintLogs);
   ipcMain.on("reprint", rePrint);
   ipcMain.on("clear-logs", clearPrintLogs);
@@ -185,10 +216,14 @@ function initPrintLogEvent() {
  * @return {void}
  */
 function removePrintLogEvent() {
+  removePrintLogIpcHandlers();
+  PRINT_LOG_WINDOW = null;
+}
+
+function removePrintLogIpcHandlers() {
   ipcMain.removeListener("request-logs", fetchPrintLogs);
   ipcMain.removeListener("reprint", rePrint);
   ipcMain.removeListener("clear-logs", clearPrintLogs);
-  PRINT_LOG_WINDOW = null;
 }
 
 module.exports = async () => {

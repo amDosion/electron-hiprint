@@ -41,6 +41,7 @@ const SORTABLE_COLUMNS = new Set([
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 200;
+const DEFAULT_ORDER_BY = " ORDER BY timestamp DESC, id DESC";
 
 function countPlaceholders(fragment) {
   return (fragment.match(/\?/g) || []).length;
@@ -83,7 +84,7 @@ function buildSafeLogQuery(payload = {}) {
     ? ` WHERE ${fragments.join(" AND ")}`
     : "";
 
-  let orderBy = "";
+  let orderBy = DEFAULT_ORDER_BY;
   if (sort && sort.prop && sort.order && SORTABLE_COLUMNS.has(sort.prop)) {
     const direction =
       String(sort.order)
@@ -91,7 +92,10 @@ function buildSafeLogQuery(payload = {}) {
         .toUpperCase() === "ASC"
         ? "ASC"
         : "DESC";
-    orderBy = ` ORDER BY ${sort.prop} ${direction}`;
+    orderBy =
+      sort.prop === "timestamp"
+        ? ` ORDER BY timestamp ${direction}, id ${direction}`
+        : ` ORDER BY ${sort.prop} ${direction}`;
   }
 
   const limit = toPositiveInt(
@@ -111,4 +115,5 @@ module.exports = {
   SORTABLE_COLUMNS,
   TIMESTAMP_RANGE,
   MAX_PAGE_SIZE,
+  DEFAULT_ORDER_BY,
 };
