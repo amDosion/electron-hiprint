@@ -1560,6 +1560,7 @@ module.exports = {
   address: _address,
   initServeEvent,
   initClientEvent,
+  getExportCapability,
   getConnectionStatus,
   emitConnectionStatus,
   getCurrentPrintStatusByName,
