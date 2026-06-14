@@ -6,15 +6,9 @@ const {
   shell,
 } = require("electron");
 const path = require("path");
-const { store } = require("../tools/utils");
 const { getAssetUrl } = require("./asset-url");
 const { attachLoadingView } = require("./loading-view");
 const softwareLogStore = require("./software-log-store");
-
-// 软件日志目录：与 main.js 同口径（store.logPath 优先，否则系统 logs 目录）。
-// 软件日志数据已迁移到 sqlite（software_logs 表，见 software-log-store.js）；
-// 此处仅用于「打开日志文件夹」——该目录仍保留 electron-log 文本兜底文件。
-const logPath = store.get("logPath") || app.getPath("logs");
 
 function createSoftwareLogWindow() {
   const windowOptions = {
@@ -58,11 +52,11 @@ function createSoftwareLogWindow() {
 }
 
 /**
- * @description: 打开日志文件夹（electron-log 文本兜底文件仍写在此目录）
+ * @description: 打开 sqlite 数据库目录（软件日志存放在 software_logs 表）
  * @return {void}
  */
 function openFolder() {
-  shell.openPath(logPath);
+  shell.openPath(path.dirname(softwareLogStore.getDatabasePath()));
 }
 
 /**

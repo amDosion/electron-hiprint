@@ -75,4 +75,6 @@ db.serialize(() => {
   );
 });
 
+db.getDatabasePath = () => dbPath;
+
 module.exports = db;

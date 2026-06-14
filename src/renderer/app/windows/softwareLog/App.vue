@@ -17,7 +17,7 @@ const currentDate = ref('')
 const levelFilter = ref('')
 const keyword = ref('')
 const lines = ref<HiprintSoftwareLogLine[]>([])
-const file = ref('')
+const sourceDay = ref('')
 const truncated = ref(false)
 const consoleEl = ref<HTMLElement | null>(null)
 
@@ -67,7 +67,9 @@ const filteredLines = computed<DisplayLine[]>(() => {
   return result
 })
 
-const footerFile = computed(() => (file.value ? '…/logs/' + file.value : ''))
+const footerSource = computed(() =>
+  sourceDay.value ? 'sqlite/software_logs · ' + sourceDay.value : 'sqlite/software_logs',
+)
 
 const footerCount = computed(() => {
   const shown = filteredLines.value.length
@@ -88,7 +90,7 @@ function scrollToBottom(): void {
 async function loadDate(date: string): Promise<void> {
   if (!date) {
     lines.value = []
-    file.value = ''
+    sourceDay.value = ''
     truncated.value = false
     return
   }
@@ -96,12 +98,12 @@ async function loadDate(date: string): Promise<void> {
     const res = await ipc.read(date)
     const safe = res || ({} as HiprintSoftwareLogPayload)
     lines.value = Array.isArray(safe.lines) ? safe.lines : []
-    file.value = safe.file || date + '.log'
+    sourceDay.value = safe.file || date
     truncated.value = !!safe.truncated
     nextTick(scrollToBottom)
   } catch {
     lines.value = []
-    file.value = ''
+    sourceDay.value = ''
     truncated.value = false
   }
 }
@@ -179,7 +181,7 @@ onMounted(async () => {
     <el-button class="sl-icon-btn" size="small" title="刷新" @click="refresh">
       <el-icon><Refresh /></el-icon>
     </el-button>
-    <el-button class="sl-icon-btn" size="small" title="打开文件夹" @click="openFolder">
+    <el-button class="sl-icon-btn" size="small" title="打开数据库目录" @click="openFolder">
       <el-icon><FolderOpened /></el-icon>
     </el-button>
   </div>
@@ -199,13 +201,13 @@ onMounted(async () => {
         </div>
       </template>
       <div v-else class="empty">
-        {{ currentDate ? '没有匹配的日志记录' : '暂无日志文件' }}
+        {{ currentDate ? '没有匹配的日志记录' : '暂无日志记录' }}
       </div>
     </div>
   </div>
 
   <div class="footer">
-    <span>{{ footerFile }}</span>
+    <span>{{ footerSource }}</span>
     <span>
       {{ footerCount }}
       <span v-if="truncated" class="truncated">· 已截断（仅显示末尾部分）</span>
@@ -216,8 +218,8 @@ onMounted(async () => {
 <style>
 /* ============================================================
    软件日志 · in-app 查看器（浅色主题，对齐 04-software-log.svg）
-   顶栏品牌 + 日期下拉 + 级别筛选 + 关键字搜索高亮 + 刷新 + 打开文件夹；
-   下方按级别着色的 console 列表；底部当前文件名 + 行数。
+   顶栏品牌 + 日期下拉 + 级别筛选 + 关键字搜索高亮 + 刷新 + 打开数据库目录；
+   下方按级别着色的 console 列表；底部当前 sqlite 表来源 + 行数。
    ============================================================ */
 :root {
   --sl-brand: #3358e0;

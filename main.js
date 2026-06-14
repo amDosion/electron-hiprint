@@ -42,9 +42,7 @@ const {
 } = require("./tools/utils");
 
 const TaskRunner = require("concurrent-tasks");
-const dayjs = require("dayjs");
 
-const logPath = store.get("logPath") || app.getPath("logs");
 const SOCKET_MAX_HTTP_BUFFER_SIZE = 52428800;
 
 function isLoopbackOrigin(requestOrigin) {
@@ -71,12 +69,9 @@ function isAllowedSocketOrigin(requestOrigin) {
 
 Object.assign(console, electronLog.functions);
 
-electronLog.transports.file.resolvePathFn = () =>
-  path.join(logPath, dayjs().format("YYYY-MM-DD.log"));
-
-// 软件日志双写到 sqlite：软件日志窗口数据源以 sqlite 为准（与打印日志统一），
-// 文本 transport 保留作崩溃态同步落盘兜底。transport 内部容错且禁用 console。
+// 软件日志只写 sqlite，禁用 electron-log 默认文件 transport，避免继续生成按天 .log 文件。
 const softwareLogStore = require("./src/software-log-store");
+electronLog.transports.file.level = false;
 electronLog.transports.sqlite = softwareLogStore.appendFromTransport;
 
 // 监听崩溃事件
@@ -301,7 +296,6 @@ async function initialize() {
       "transitToken",
       "allowNotify",
       "closeType",
-      "logPath",
       "pdfPath",
       "defaultPrinter",
       "disabledGpu",

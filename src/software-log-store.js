@@ -1,7 +1,7 @@
 "use strict";
 
 // 软件日志的 sqlite 存储层：被 main.js（electron-log transport 写入）与
-// src/softwareLog.js（窗口读取）共用，使软件日志与打印日志统一落到 sqlite。
+// src/softwareLog.js（窗口读取/打开数据库目录）共用，使软件日志与打印日志统一落到 sqlite。
 //
 // 关键约束：写入路径运行在「console 已被 electron-log 接管」的环境下
 //（main.js: Object.assign(console, electronLog.functions)），因此写入侧的
@@ -11,7 +11,7 @@
 const db = require("../tools/database");
 const dayjs = require("dayjs");
 
-// 单日读取上限，与原文本实现（softwareLog.js）保持一致，避免一次性读入超大日志。
+// 单日读取上限，避免一次性读入超大日志。
 const MAX_LINES = 2000;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -65,12 +65,19 @@ function appendFromTransport(message) {
       "INSERT INTO software_logs (day, ts, level, msg) VALUES (?, ?, ?, ?)",
       [day, ts, level, text],
       () => {
-        // 写入失败静默忽略：此处禁止 console（递归）；文本 transport 仍在，日志不会完全丢失。
+        // 写入失败静默忽略：此处禁止 console（递归），也不能抛出破坏业务调用链。
       },
     );
   } catch {
     // 同上：写入路径任何异常一律静默。
   }
+}
+
+/**
+ * @return {string} 当前 sqlite 数据库路径
+ */
+function getDatabasePath() {
+  return db.getDatabasePath();
 }
 
 /**
@@ -120,4 +127,4 @@ function readLog(date) {
   });
 }
 
-module.exports = { appendFromTransport, listDates, readLog };
+module.exports = { appendFromTransport, listDates, readLog, getDatabasePath };

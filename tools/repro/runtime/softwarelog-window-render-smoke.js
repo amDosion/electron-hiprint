@@ -3,7 +3,7 @@
 // 软件日志窗口 SFC 渲染冒烟（需真实 Electron）。
 // 经 app:// 加载已构建的 assets/softwareLog.html，附真实 src/preload/softwareLog.js（暴露 hiprintSoftwareLog 桥）。
 // 断言：加载成功、origin 为 app://bundle、桥注入、Vue 根挂载、顶栏品牌/日期选择/级别选择/搜索框、
-//       console 渲染出日志行与级别标签、刷新/打开文件夹按钮、无脚本错误。
+//       console 渲染出日志行与级别标签、刷新/打开数据库目录按钮、sqlite 页脚来源、无脚本错误。
 // preload 用 ipcRenderer.invoke（异步）取日期/读日志，故 harness 用 ipcMain.handle 应答以驱动真实挂载。
 // 运行：npx electron tools/repro/runtime/softwarelog-window-render-smoke.js
 // 约定：stdout 打印 SMOKE_RESULT <json>，failed=false 且退出码 0 表示通过。
@@ -19,7 +19,7 @@ app.getAppPath = () => REPO_ROOT;
 // 软件日志桥经 invoke 取数据：列出日期 + 读取某日日志。给出可断言的真实负载。
 ipcMain.handle("software-log:list-dates", () => ["2026-06-10", "2026-06-09"]);
 ipcMain.handle("software-log:read", (_event, date) => ({
-  file: String(date) + ".log",
+  file: String(date),
   truncated: false,
   lines: [
     { ts: "2026-06-10 10:00:00", level: "info", msg: "服务已启动" },
@@ -92,6 +92,8 @@ app.whenReady().then(async () => {
       out.hasConsole = !!document.querySelector('.console');
       out.hasFooter = !!document.querySelector('.footer');
       out.iconBtnCount = document.querySelectorAll('.sl-icon-btn').length;
+      out.iconTitles = Array.from(document.querySelectorAll('.sl-icon-btn')).map((button) => button.getAttribute('title') || '');
+      out.footerText = (document.querySelector('.footer') || {}).textContent || '';
       out.logRowCount = document.querySelectorAll('.console .log-row').length;
       out.levelLabelCount = document.querySelectorAll('.console .log-level').length;
       return out;
@@ -139,6 +141,21 @@ app.whenReady().then(async () => {
         step: "icon-buttons-wrong",
         got: probe.iconBtnCount,
       });
+    }
+    if (!Array.isArray(probe.iconTitles) || !probe.iconTitles.includes("打开数据库目录")) {
+      result.failed = true;
+      result.steps.push({
+        step: "database-folder-button-missing",
+        got: probe.iconTitles,
+      });
+    }
+    if (!/sqlite\/software_logs/.test(probe.footerText || "")) {
+      result.failed = true;
+      result.steps.push({ step: "sqlite-footer-missing", got: probe.footerText });
+    }
+    if (/\.log|…\/logs\//.test(probe.footerText || "")) {
+      result.failed = true;
+      result.steps.push({ step: "file-log-footer-present", got: probe.footerText });
     }
     // 3 条注入日志应渲染为 3 行 + 3 个级别标签
     if (probe.logRowCount !== 3 || probe.levelLabelCount !== 3) {

@@ -35,7 +35,6 @@ interface SetFormData {
   allowNotify: boolean
   disabledGpu: boolean
   closeType: string
-  logPath: string
   pdfPath: string
   defaultPrinter: string
   exportDirectoryEnabled: boolean
@@ -60,7 +59,6 @@ const DEFAULTS: SetFormData = {
   allowNotify: false,
   disabledGpu: false,
   closeType: 'tray',
-  logPath: '',
   pdfPath: '',
   defaultPrinter: '',
   exportDirectoryEnabled: false,
@@ -164,7 +162,6 @@ function handleTest(): void {
 
 function chooseDirectory(type: string): void {
   const title = {
-    logPath: '选择日志存储路径',
     pdfPath: '选择 PDF 缓存路径',
     exportDirectoryPath: '选择共享导出目录',
   }[type]
@@ -239,31 +236,12 @@ const formOptions = computed(() => ({
       display: setTab.value === 'basicSet',
     },
     {
-      label: '日志路径',
-      prop: 'logPath',
-      is: 'el-input',
-      tips: '程序运行时产生的日志路径',
-      attrs: { readonly: true },
-      event: { click: () => openDirectory('logPath') },
-      span: 18,
-      display: setTab.value === 'basicSet',
-    },
-    {
-      label: '　',
-      is: 'el-button',
-      event: { click: () => chooseDirectory('logPath') },
-      content: '选择',
-      span: 6,
-      display: setTab.value === 'basicSet',
-    },
-    {
       label: 'PDF 缓存路径',
       prop: 'pdfPath',
       is: 'el-input',
       tips: '系统运行过程中的临时 PDF 存储路径',
       attrs: { readonly: true },
       event: { click: () => openDirectory('pdfPath') },
-      style: { marginBottom: '60px' },
       span: 18,
       display: setTab.value === 'basicSet',
     },
@@ -273,7 +251,6 @@ const formOptions = computed(() => ({
       event: { click: () => chooseDirectory('pdfPath') },
       content: '选择',
       span: 6,
-      style: { marginBottom: '60px' },
       display: setTab.value === 'basicSet',
     },
     {

@@ -72,6 +72,8 @@ async function createSetWindow() {
  */
 function setConfig(event, data) {
   console.log("==> 设置窗口：保存配置 <==");
+  const nextData = { ...data };
+  delete nextData.logPath;
   // 保存配置前，弹出 dialog 确认
   dialog
     .showMessageBox(SET_WINDOW, {
@@ -84,11 +86,11 @@ function setConfig(event, data) {
     .then((res) => {
       if (res.response === 0) {
         try {
-          let pdfPath = path.join(data.pdfPath, "url_pdf");
+          let pdfPath = path.join(nextData.pdfPath, "url_pdf");
           fs.mkdirSync(pdfPath, { recursive: true });
-          pdfPath = path.join(data.pdfPath, "blob_pdf");
+          pdfPath = path.join(nextData.pdfPath, "blob_pdf");
           fs.mkdirSync(pdfPath, { recursive: true });
-          pdfPath = path.join(data.pdfPath, "hiprint");
+          pdfPath = path.join(nextData.pdfPath, "hiprint");
           fs.mkdirSync(pdfPath, { recursive: true });
         } catch {
           dialog.showMessageBox(SET_WINDOW, {
@@ -100,21 +102,9 @@ function setConfig(event, data) {
           });
           return;
         }
-        try {
-          fs.accessSync(data.logPath, fs.constants.W_OK);
-        } catch (err) {
-          dialog.showMessageBox(SET_WINDOW, {
-            type: "error",
-            title: "提示",
-            message: "日志保存路径无法写入数据，请重新设置！",
-            buttons: ["确定"],
-            noLink: true,
-          });
-          return;
-        }
-        if (data.exportDirectory && data.exportDirectory.enabled) {
+        if (nextData.exportDirectory && nextData.exportDirectory.enabled) {
           try {
-            fs.accessSync(data.exportDirectory.path, fs.constants.W_OK);
+            fs.accessSync(nextData.exportDirectory.path, fs.constants.W_OK);
           } catch (err) {
             dialog.showMessageBox(SET_WINDOW, {
               type: "error",
@@ -126,7 +116,7 @@ function setConfig(event, data) {
             return;
           }
         }
-        store.set(data);
+        store.set(nextData);
         setTimeout(() => {
           app.relaunch();
           app.exit();

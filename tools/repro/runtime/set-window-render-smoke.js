@@ -28,7 +28,6 @@ ipcMain.on("hiprint:settings-snapshot", (event) => {
     transitToken: "",
     allowNotify: false,
     closeType: "tray",
-    logPath: "C:/ProgramData/hiprint/logs",
     pdfPath: "C:/ProgramData/hiprint/pdf",
     defaultPrinter: "",
     exportDirectory: { enabled: false },

@@ -165,10 +165,6 @@ const schema = {
     type: "string",
     default: getDefaultPluginVersion(),
   },
-  logPath: {
-    type: "string",
-    default: app.getPath("logs"),
-  },
   pdfPath: {
     type: "string",
     default: app.getPath("temp"),

@@ -41,7 +41,6 @@ ipcMain.on("hiprint:settings-snapshot", (event) => {
     transitToken: "",
     allowNotify: false,
     closeType: "tray",
-    logPath: "C:/ProgramData/hiprint/logs",
     pdfPath: "C:/ProgramData/hiprint/pdf",
     defaultPrinter: "",
     exportDirectory: { enabled: false },
@@ -55,7 +54,7 @@ ipcMain.on("reprint", () => {});
 ipcMain.on("clear-logs", () => {});
 ipcMain.handle("software-log:list-dates", () => ["2026-06-13"]);
 ipcMain.handle("software-log:read", (_event, date) => ({
-  file: String(date) + ".log",
+  file: String(date),
   truncated: false,
   lines: [
     { ts: "2026-06-13 10:00:00", level: "info", msg: "服务已启动" },
