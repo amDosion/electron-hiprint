@@ -129,8 +129,10 @@ app.whenReady().then(async () => {
     };
   })()`);
 
-  win.destroy();
-
+  // geom 已在上方 executeJavaScript 取毕，窗口数据不再需要。
+  // 不显式 win.destroy()：它会触发渲染/子进程异步拆卸，与紧随的 app.exit() 竞争，
+  // 在 Windows 上导致进程挂起（退出码 124）。app.exit() 自身会立即关闭所有窗口，
+  // 与其余 8 个 render-smoke 的退出写法一致。
   const checks = {
     "window-not-scrollable": geom.docScrollable === false,
     "window-not-horizontally-scrollable": geom.docHorizontalScrollable === false,
