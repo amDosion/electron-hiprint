@@ -8,7 +8,7 @@
 
 </div>
 
-该项目是为 [vue3-print / vue-plugin-hiprint](https://github.com/amDosion/vue3-print) 配套开发的静默打印解决方案。我们发现部分使用此项目的开发者拥有自定义的设计器或渲染方案，或者仅需要静默打印一段 HTML、PDF。如果您也有类似需求，electron-hiprint 将是您的理想选择。
+该项目是为 [vue3-print](https://github.com/amDosion/vue3-print) 配套开发的静默打印解决方案。我们发现部分使用此项目的开发者拥有自定义的设计器或渲染方案，或者仅需要静默打印一段 HTML、PDF。如果您也有类似需求，electron-hiprint 将是您的理想选择。
 
 <div align="center">
 
@@ -40,7 +40,7 @@ npm run build-w-64
 
 ## 推荐的 Web 打印设计渲染插件
 
-[vue3-print / vue-plugin-hiprint](https://github.com/amDosion/vue3-print)
+[vue3-print](https://github.com/amDosion/vue3-print)
 
 ## 打印原理
 
@@ -116,7 +116,7 @@ npm run build-w-64
 | 8    | transitUrl             | String           | 中转服务地址                                          |
 | 9    | transitToken           | String           | 中转服务令牌                                          |
 | 10   | closeType              | String           | 窗口关闭行为（tray 或 quit）                          |
-| 11   | pluginVersion          | String           | vue-plugin-hiprint 插件版本                           |
+| 11   | pluginVersion          | String           | vue3-print 插件版本                           |
 | 12   | logPath                | String           | 日志路径                                              |
 | 13   | pdfPath                | String           | 临时文件路径                                          |
 | 14   | defaultPrinter         | String           | 默认打印机                                            |
@@ -125,7 +125,7 @@ npm run build-w-64
 
 > <span id="tips1">[1]</span> `mainTitle` 和 `rePrint` 字段在设置页面中未显式提供设置，方便各位可以在不修改源码二开的情况下通过配置快速实现定制化和高级功能，且不易被客户篡改，详见下方[覆盖默认配置方法](#覆盖默认配置方法)。
 
-> <span id="tips2">[2]</span> `vue-plugin-hiprint` 需要使用 ^0.0.55 版本才可使用 `token` 否则请勿设置 `token`。
+> <span id="tips2">[2]</span> `token` 为身份验证令牌，按需设置；无需鉴权时请勿设置 `token`。
 
 ### 覆盖默认配置方法
 
@@ -153,9 +153,9 @@ npm run build-w-64
 
 </div>
 
-# 与非 `vue-plugin-hiprint` 项目的兼容
+# 与非 `vue3-print` 项目的兼容
 
-目标用户：只需要实现 HTML、PDF 静默打印，未使用 `vue-plugin-hiprint` 设计插件。
+目标用户：只需要实现 HTML、PDF 静默打印，未使用 `vue3-print` 设计插件。
 
 ## 客户端连接
 
@@ -173,7 +173,7 @@ npm run build-w-64
    const socket = io("http://localhost:17521", {
      transports: ["websocket"],
      auth: {
-       token: "vue-plugin-hiprint",
+       token: "vue3-print",
      },
    });
 
@@ -377,7 +377,7 @@ socket.on("paperSizeInfo", (paperSizes) => {
 /**
  * @description: 打印 html 字符串
  * @param {String} html 打印的html字符串
- * @param {String|number} templateId vue-plugin-hiprint 中的模板id，你可以自定义传入一个 Id，用于回调 success/error 判断
+ * @param {String|number} templateId vue3-print 中的模板id，你可以自定义传入一个 Id，用于回调 success/error 判断
  * @param {String} printer 打印机名称 printer.name 可为空，缺省默认使用设备默认打印机
  * @param {pageSize} pageSize 打印纸张大小 { height: 80 * 1000, width: 60 * 1000 } 可为空，缺省默认使用打印机默认纸张
  * @description: 其他参数参考 默认打印参数说明
@@ -487,10 +487,10 @@ if (globalThis.connect) {
     copies?: number; // 打印份数
 }
 
-// vue-plugin-hiprint
+// vue3-print
 hiprint.hiwebSocket.send({ html, client, printer, type: 'pdf'})
 
-// 非vue-plugin-hiprint
+// 非vue3-print
 socket.emit("news", { html, client, printer, type: 'pdf'})
 ```
 
@@ -506,7 +506,7 @@ socket.emit("news", { html, client, printer, type: 'pdf'})
 > 参数同 pdf 打印功能
 
 ```js
-// vue-plugin-hiprint
+// vue3-print
 hiprint.hiwebSocket.send({
   client,
   printer,
@@ -515,7 +515,7 @@ hiprint.hiwebSocket.send({
   pdf_path: "网络PDF的下载url",
 });
 
-// 非vue-plugin-hiprint
+// 非vue3-print
 socket.emit("news", {
   client,
   printer,
@@ -530,7 +530,7 @@ socket.emit("news", {
 > ^1.0.14-beta4
 
 ```js
-// vue-plugin-hiprint
+// vue3-print
 hiprint.hiwebSocket.send({
   client,
   printer,
@@ -539,7 +539,7 @@ hiprint.hiwebSocket.send({
   pdf_blob: Blob,
 });
 
-// 非vue-plugin-hiprint
+// 非vue3-print
 socket.emit("news", {
   client,
   printer,
@@ -570,9 +570,9 @@ socket.on("error", (res) => {
 
 现在，你可以通过对应 socket 事件，调用 electron-hiprint 生成 jpeg、矢量 pdf 和直接打印了。
 
-对于 vue-plugin-hiprint 模板，只需要提供 template(json、jsonString) 和 data(json) 即可。
+对于 vue3-print 模板，只需要提供 template(json、jsonString) 和 data(json) 即可。
 
-非 vue-plugin-hiprint 模板，你需要提供 html（需要提供完整的样式含 UI、项目内部样式）。
+非 vue3-print 模板，你需要提供 html（需要提供完整的样式含 UI、项目内部样式）。
 
 <div align="center">
 
@@ -593,7 +593,7 @@ socket.on("error", (res) => {
 | render-print-error   | `templateId`,`msg`          | 错误回调，返回 templateId 和错误信息               |
 
 <details>
-    <summary>vue-plugin-hiprint</summary>
+    <summary>vue3-print</summary>
 
 ```js
 hiprint.hiwebSocket.socket.emit("render-jpeg", {
@@ -651,7 +651,7 @@ const socket = io("http://localhost:17521", {
   transports: ["websocket"],
   reconnectionAttempts: 5,
   auth: {
-    token: "vue-plugin-hiprint",
+    token: "vue3-print",
   },
 });
 socket.on("connect", () => {
@@ -715,7 +715,7 @@ socket.on("disconnect", () => {
    });
    socket.emit("render-print", { template, data, rePrintAble: false });
 
-   // vue-plugin-hiprint
+   // vue3-print
    hiprintTemplate.print2(printData, { printer, title, rePrintAble: false });
    hiprint.hiwebSocket.socket.emit("render-print", {
      template,
@@ -800,13 +800,13 @@ this.$error({
 
 | 项目名称                 | 项目地址                                                                                                                 | 下载地址                                                                | 描述                                                               |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| vue-plugin-hiprint       | [github](https://github.com/amDosion/vue3-print)                                                                         | [npm](https://www.npmjs.com/package/vue-plugin-hiprint)                 | 打印设计器                                                         |
+| vue3-print       | [github](https://github.com/amDosion/vue3-print)                                                                         | [npm](https://www.npmjs.com/package/@amdosion/vue3-print)               | 打印设计器                                                         |
 | electron-hiprint         | [github](https://github.com/amDosion/electron-hiprint)                                                                   | [releases](https://github.com/amDosion/electron-hiprint/releases)       | 直接打印客户端                                                     |
 | node-hiprint-transit     | [github](https://github.com/amDosion/node-hiprint-transit)                                                               | [packages](https://github.com/amDosion/node-hiprint-transit/pkgs/container/node-hiprint-transit) | web 与客户端中转服务 Node 实现                                     |
 | hiprint-transporter-java | [github](https://github.com/LyingDoc/hiprint-transit-java)、[gitee](https://gitee.com/dut_cc/hiprint-transporter-java)   | -                                                                       | web 与客户端中转服务 Java 实现                                     |
 | hiprint-transit-java     | [github](https://github.com/weaponready/hiprint-transit-java)                                                            | -                                                                       | web 与客户端中转服务 Java 实现                                     |
-| uni-app-hiprint          | [github](https://github.com/Xavier9896/uni-app-hiprint)                                                                  | -                                                                       | uni-app 项目通过 webview 使用 vue-plugin-hiprint demo              |
-| node-hiprint-pdf         | [github](https://github.com/CcSimple/node-hiprint-pdf)                                                                   | -                                                                       | 提供通过 node 对 vue-plugin-hiprint 模板生成 矢量 pdf、image、html |
+| uni-app-hiprint          | [github](https://github.com/Xavier9896/uni-app-hiprint)                                                                  | -                                                                       | uni-app 项目通过 webview 使用 vue3-print demo              |
+| node-hiprint-pdf         | [github](https://github.com/CcSimple/node-hiprint-pdf)                                                                   | -                                                                       | 提供通过 node 对 vue3-print 模板生成 矢量 pdf、image、html |
 
 ## 参考资源
 

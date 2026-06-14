@@ -1,7 +1,7 @@
 name: Auto version tag
 
 # 自动发版链路：
-#   代码推送到 master/main，或插件仓库 vue-plugin-hiprint-v2 发布 npm 后，
+#   代码推送到 master/main，或插件包 @amdosion/vue3-print（vue3-print 仓库）发布 npm 后，
 #   本工作流会准备客户端版本 -> 提交 package.json/package-lock.json -> 打 tag。
 #   tag 推送触发 release.yml；release 构建阶段由 tools/build-package.js ->
 #   tools/sync-builtin-plugin.js 在「构建期」从 npm 拉取最新插件烘焙进安装包。
