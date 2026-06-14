@@ -25,7 +25,6 @@ on:
       - ".omx/**"
       - ".remember/**"
       - ".investigations/**"
-      - ".github/**"
   repository_dispatch:
     types: [plugin-released]
   workflow_dispatch:

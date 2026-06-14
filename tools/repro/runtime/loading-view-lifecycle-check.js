@@ -1,6 +1,6 @@
 "use strict";
 
-// 验证日志类窗口的 loading WebContentsView 会在页面加载完成后移除。
+// 验证所有 app:// 窗口的 loading WebContentsView 会在页面加载完成后移除。
 // 运行：npx electron tools/repro/runtime/loading-view-lifecycle-check.js
 // 约定：stdout 打印 SMOKE_RESULT <json>，failed=false 且退出码 0 表示通过。
 
@@ -23,8 +23,31 @@ app.once("will-quit", () => {
 });
 
 ipcMain.on("hiprint:store-get", (event, key) => {
-  event.returnValue = key === "rePrint" ? 1 : undefined;
+  event.returnValue =
+    key === "mainTitle" ? "Electron-hiprint" : key === "rePrint" ? 1 : undefined;
 });
+ipcMain.on("hiprint:app-version", (event) => {
+  event.returnValue = "1.0.54";
+});
+ipcMain.on("hiprint:settings-snapshot", (event) => {
+  event.returnValue = {
+    port: 17521,
+    token: "",
+    nickName: "",
+    openAtLogin: false,
+    openAsHidden: false,
+    connectTransit: false,
+    transitUrl: "",
+    transitToken: "",
+    allowNotify: false,
+    closeType: "tray",
+    logPath: "C:/ProgramData/hiprint/logs",
+    pdfPath: "C:/ProgramData/hiprint/pdf",
+    defaultPrinter: "",
+    exportDirectory: { enabled: false },
+  };
+});
+ipcMain.on("setContentSize", () => {});
 ipcMain.on("request-logs", (event) => {
   event.sender.send("print-logs", { rows: [], total: 0 });
 });
@@ -69,11 +92,18 @@ async function waitUntil(check, timeoutMs) {
   return false;
 }
 
-async function probeWindow({ name, asset, preload }) {
+async function probeWindow({
+  name,
+  asset,
+  preload,
+  width = 1000,
+  height = 640,
+  bridgeName,
+}) {
   const win = new BrowserWindow({
     show: false,
-    width: 1000,
-    height: 640,
+    width,
+    height,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -90,16 +120,18 @@ async function probeWindow({ name, asset, preload }) {
   win.webContents.on("did-fail-load", (_event, code, desc, url) => {
     step.events.push(`did-fail-load:${code}:${desc}:${url}`);
   });
-  win.webContents.on("console-message", (event) => {
-    const details = event && typeof event === "object" ? event : {};
-    const level = details.level || 0;
-    const message = details.message || "";
+  win.webContents.on("console-message", (...args) => {
+    const maybeDetails = args[0] && typeof args[0] === "object" ? args[0] : {};
+    const level = Number.isInteger(maybeDetails.level)
+      ? maybeDetails.level
+      : args[1] || 0;
+    const message = maybeDetails.message || args[2] || "";
     if (level >= 3) step.consoleErrors.push(message);
   });
 
   const overlay = attachLoadingView(
     win,
-    { width: 1000, height: 640 },
+    { width, height },
     getAssetUrl("loading.html"),
   );
 
@@ -113,10 +145,14 @@ async function probeWindow({ name, asset, preload }) {
       3000,
     );
   }
-  step.probe = await win.webContents.executeJavaScript(`(() => ({
-    origin: location.origin,
-    appChildCount: document.querySelector('#app')?.children.length ?? -1
-  }))()`);
+  step.probe = await win.webContents.executeJavaScript(`(() => {
+    const bridgeName = ${JSON.stringify(bridgeName || "")};
+    return {
+      origin: location.origin,
+      appChildCount: document.querySelector('#app')?.children.length ?? -1,
+      hasBridge: bridgeName ? typeof window[bridgeName] === 'object' && window[bridgeName] !== null : true
+    };
+  })()`);
 
   win.destroy();
   return step;
@@ -134,9 +170,30 @@ app.whenReady().then(async () => {
   try {
     result.steps.push(
       await probeWindow({
+        name: "index",
+        asset: "index.html",
+        preload: path.join(REPO_ROOT, "src/preload/index.js"),
+        width: 500,
+        height: 300,
+        bridgeName: "hiprintIndex",
+      }),
+    );
+    result.steps.push(
+      await probeWindow({
+        name: "set",
+        asset: "set.html",
+        preload: path.join(REPO_ROOT, "src/preload/set.js"),
+        width: 520,
+        height: 720,
+        bridgeName: "hiprintSet",
+      }),
+    );
+    result.steps.push(
+      await probeWindow({
         name: "printLog",
         asset: "printLog.html",
         preload: path.join(REPO_ROOT, "src/preload/printLog.js"),
+        bridgeName: "hiprintPrintLog",
       }),
     );
     result.steps.push(
@@ -144,6 +201,7 @@ app.whenReady().then(async () => {
         name: "softwareLog",
         asset: "softwareLog.html",
         preload: path.join(REPO_ROOT, "src/preload/softwareLog.js"),
+        bridgeName: "hiprintSoftwareLog",
       }),
     );
 
@@ -159,6 +217,10 @@ app.whenReady().then(async () => {
       if (step.probe.appChildCount < 1) {
         result.failed = true;
         step.failure = "vue-not-mounted";
+      }
+      if (!step.probe.hasBridge) {
+        result.failed = true;
+        step.failure = "bridge-missing";
       }
       if (step.consoleErrors.length > 0) {
         result.failed = true;

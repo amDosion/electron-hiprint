@@ -85,10 +85,12 @@ function main() {
     risks,
     "PLUGIN-DIST-MAP-MISSING",
     pluginPackage.includes("vue3-print.runtime.js") &&
+      pluginPackage.includes("vue-plugin-hiprint.js") &&
+      pluginPackage.includes("sourceNames") &&
       pluginPackage.includes("vue3-print.css") &&
       pluginPackage.includes("print-lock.css") &&
       pluginPackage.includes("cacheName"),
-    "download should map the npm dist files into the existing renderer cache filenames.",
+    "download should map current and future npm dist files into the renderer cache filenames.",
   );
 
   record(
@@ -98,6 +100,18 @@ function main() {
       pluginPackage.includes("Electron 内置渲染") &&
       renderHtml.includes("@amdosion/vue3-print"),
     "missing browser/global plugin files should produce a targeted diagnostic instead of a generic failure or blank renderer.",
+  );
+
+  record(
+    risks,
+    "PLUGIN-SYNC-SHOULD-ACCEPT-RUNTIME-CANDIDATES",
+    buildSync.includes("getPluginSourceNames") &&
+      buildSync.includes("candidate.priority") &&
+      buildSync.includes("extracted[cacheName]") &&
+      renderHtml.includes("window.Vue3Print") &&
+      renderHtml.includes("window.VuePluginHiprint") &&
+      renderHtml.includes('window["vue-plugin-hiprint"]'),
+    "build-time plugin sync should accept the currently published legacy browser bundle while the renderer also accepts its legacy global.",
   );
 
   record(

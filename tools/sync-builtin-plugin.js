@@ -12,6 +12,7 @@ const {
   PLUGIN_PACKAGE_VERSION_URL,
   formatMissingPluginFiles,
   getPluginCacheFileName,
+  getPluginSourceNames,
 } = require("../src/plugin-package");
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -67,12 +68,15 @@ function verifyNpmIntegrity(buffer, integrity) {
 
 function extractDistFilesFromTarball(tarballBuffer) {
   const tarBuffer = zlib.gunzipSync(tarballBuffer);
-  const wanted = new Map(
-    PLUGIN_DIST_FILE_MAP.map((item) => [
-      `package/dist/${item.sourceName}`,
-      item.sourceName,
-    ]),
-  );
+  const wanted = new Map();
+  for (const item of PLUGIN_DIST_FILE_MAP) {
+    getPluginSourceNames(item).forEach((sourceName, priority) => {
+      wanted.set(`package/dist/${sourceName}`, {
+        cacheName: item.cacheName,
+        priority,
+      });
+    });
+  }
   const extracted = {};
   let offset = 0;
   while (offset + 512 <= tarBuffer.length) {
@@ -88,9 +92,14 @@ function extractDistFilesFromTarball(tarballBuffer) {
     const dataStart = offset + 512;
     const dataEnd = dataStart + size;
     if (wanted.has(name)) {
-      extracted[wanted.get(name)] = Buffer.from(
-        tarBuffer.subarray(dataStart, dataEnd),
-      );
+      const candidate = wanted.get(name);
+      const current = extracted[candidate.cacheName];
+      if (!current || candidate.priority < current.priority) {
+        extracted[candidate.cacheName] = {
+          content: Buffer.from(tarBuffer.subarray(dataStart, dataEnd)),
+          priority: candidate.priority,
+        };
+      }
     }
     offset = dataStart + Math.ceil(size / 512) * 512;
   }
@@ -129,22 +138,22 @@ async function syncVersion(version) {
   verifyNpmIntegrity(tarball, integrity);
   const extracted = extractDistFilesFromTarball(tarball);
   const missingFiles = PLUGIN_DIST_FILE_MAP.filter(
-    ({ required, sourceName }) => required && !extracted[sourceName],
+    ({ required, cacheName }) => required && !extracted[cacheName],
   );
   if (missingFiles.length > 0) {
     throw new Error(formatMissingPluginFiles(version, missingFiles));
   }
 
   fs.mkdirSync(pluginDir, { recursive: true });
-  for (const { sourceName, cacheName } of PLUGIN_DIST_FILE_MAP) {
-    const content = extracted[sourceName];
-    if (!content) continue;
+  for (const { cacheName } of PLUGIN_DIST_FILE_MAP) {
+    const extractedFile = extracted[cacheName];
+    if (!extractedFile) continue;
     const filePath = path.join(
       pluginDir,
       getPluginCacheFileName(version, cacheName),
     );
     const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tempPath, content, { flag: "wx" });
+    fs.writeFileSync(tempPath, extractedFile.content, { flag: "wx" });
     fs.renameSync(tempPath, filePath);
   }
 

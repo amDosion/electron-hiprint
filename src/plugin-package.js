@@ -13,7 +13,9 @@ const FALLBACK_PLUGIN_VERSION = "1.0.4";
 const PLUGIN_DIST_FILE_MAP = [
   {
     sourceName: "vue3-print.runtime.js",
+    sourceNames: ["vue3-print.runtime.js", "vue-plugin-hiprint.js"],
     cacheName: "vue3-print.runtime.js",
+    compatibleCacheNames: ["vue3-print.runtime.js", "vue-plugin-hiprint.js"],
     required: true,
     description: "Electron 内置渲染 browser/global 脚本",
   },
@@ -31,9 +33,9 @@ const PLUGIN_DIST_FILE_MAP = [
   },
 ];
 
-const COMPATIBLE_CACHE_REQUIRED_FILES = [
-  "vue3-print.runtime.js",
-  "print-lock.css",
+const COMPATIBLE_CACHE_REQUIRED_FILE_GROUPS = [
+  ["vue3-print.runtime.js", "vue-plugin-hiprint.js"],
+  ["print-lock.css"],
 ];
 
 const versionCollator = new Intl.Collator("en", {
@@ -45,6 +47,24 @@ function getPluginCacheFileName(version, cacheName) {
   return `${version}_${cacheName}`;
 }
 
+function uniqueNames(names) {
+  return Array.from(new Set(names.filter(Boolean)));
+}
+
+function getPluginSourceNames(fileMapItem) {
+  return uniqueNames(
+    Array.isArray(fileMapItem.sourceNames)
+      ? fileMapItem.sourceNames
+      : [fileMapItem.sourceName],
+  );
+}
+
+function hasAnyPluginCacheFile(files, version, cacheNames) {
+  return cacheNames.some((cacheName) =>
+    files.has(getPluginCacheFileName(version, cacheName)),
+  );
+}
+
 function getCompatiblePluginVersions(pluginDir) {
   if (!pluginDir || !fs.existsSync(pluginDir)) {
     return [];
@@ -53,16 +73,18 @@ function getCompatiblePluginVersions(pluginDir) {
   const files = new Set(fs.readdirSync(pluginDir));
   const versions = new Set();
   for (const fileName of files) {
-    const suffix = "_vue3-print.runtime.js";
-    if (fileName.endsWith(suffix)) {
-      versions.add(fileName.slice(0, -suffix.length));
+    for (const cacheName of COMPATIBLE_CACHE_REQUIRED_FILE_GROUPS[0]) {
+      const suffix = `_${cacheName}`;
+      if (fileName.endsWith(suffix)) {
+        versions.add(fileName.slice(0, -suffix.length));
+      }
     }
   }
 
   return Array.from(versions)
     .filter((version) =>
-      COMPATIBLE_CACHE_REQUIRED_FILES.every((cacheName) =>
-        files.has(getPluginCacheFileName(version, cacheName)),
+      COMPATIBLE_CACHE_REQUIRED_FILE_GROUPS.every((cacheNames) =>
+        hasAnyPluginCacheFile(files, version, cacheNames),
       ),
     )
     .sort((left, right) => versionCollator.compare(right, left));
@@ -75,8 +97,12 @@ function getLatestCompatiblePluginVersion(pluginDir) {
 function formatMissingPluginFiles(version, missingFiles) {
   const details = missingFiles
     .map(
-      ({ sourceName, description }) =>
-        `dist/${sourceName}${description ? `（${description}）` : ""}`,
+      (fileMapItem) =>
+        `${getPluginSourceNames(fileMapItem)
+          .map((sourceName) => `dist/${sourceName}`)
+          .join(" 或 ")}${
+          fileMapItem.description ? `（${fileMapItem.description}）` : ""
+        }`,
     )
     .join("、");
   return `${PLUGIN_PACKAGE_NAME}@${version} 缺少 Electron 内置渲染所需文件：${details}。请在 npm 包发布 build:electron-plugin 产物后重试。`;
@@ -92,4 +118,5 @@ module.exports = {
   getCompatiblePluginVersions,
   getLatestCompatiblePluginVersion,
   getPluginCacheFileName,
+  getPluginSourceNames,
 };

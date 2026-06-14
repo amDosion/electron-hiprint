@@ -125,7 +125,11 @@
 
         script.setAttribute("src", scriptSrc);
         script.onload = () => {
-          const pluginGlobal = window.Vue3Print;
+          const pluginGlobal =
+            window.Vue3Print ||
+            window["@amdosion/vue3-print"] ||
+            window.VuePluginHiprint ||
+            window["vue-plugin-hiprint"];
           if (!pluginGlobal || !pluginGlobal.hiprint) {
             ipc.send("showMessageBox", {
               title: "插件加载错误",
