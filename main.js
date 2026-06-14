@@ -566,6 +566,14 @@ function buildTrayMenuTemplate() {
       },
     },
     {
+      label: "重启软件",
+      enabled: !onlineUpgradeTrayState.busy,
+      click: () => {
+        console.log("==>TRAY 重启软件<==");
+        restartApp();
+      },
+    },
+    {
       label: "退出",
       click: () => {
         console.log("==>TRAY 退出应用<==");
@@ -573,6 +581,11 @@ function buildTrayMenuTemplate() {
       },
     },
   ];
+}
+
+function restartApp() {
+  app.relaunch();
+  helper.appQuit();
 }
 
 function updateOnlineUpgradeTrayState(status) {
