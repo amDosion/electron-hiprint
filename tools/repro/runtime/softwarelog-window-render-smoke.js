@@ -3,7 +3,8 @@
 // 软件日志窗口 SFC 渲染冒烟（需真实 Electron）。
 // 经 app:// 加载已构建的 assets/softwareLog.html，附真实 src/preload/softwareLog.js（暴露 hiprintSoftwareLog 桥）。
 // 断言：加载成功、origin 为 app://bundle、桥注入、Vue 根挂载、顶栏品牌/日期选择/级别选择/搜索框、
-//       console 渲染出日志行与级别标签、刷新/打开数据库目录按钮、sqlite 页脚来源、无脚本错误。
+//       console 渲染出日志行与级别标签、刷新/打开数据库目录按钮、sqlite 页脚来源、
+//       长异常日志不会撑出横向滚动条、底栏可见、无脚本错误。
 // preload 用 ipcRenderer.invoke（异步）取日期/读日志，故 harness 用 ipcMain.handle 应答以驱动真实挂载。
 // 运行：npx electron tools/repro/runtime/softwarelog-window-render-smoke.js
 // 约定：stdout 打印 SMOKE_RESULT <json>，failed=false 且退出码 0 表示通过。
@@ -25,6 +26,14 @@ ipcMain.handle("software-log:read", (_event, date) => ({
     { ts: "2026-06-10 10:00:00", level: "info", msg: "服务已启动" },
     { ts: "2026-06-10 10:00:01", level: "warn", msg: "端口占用，重试中" },
     { ts: "2026-06-10 10:00:02", level: "error", msg: "连接失败" },
+    {
+      ts: "2026-06-10 10:00:03",
+      level: "error",
+      msg:
+        "Error: " +
+        "LONG_STACK_TOKEN_WITHOUT_SPACES_".repeat(18) +
+        " at src/pdf-print.js:88:13",
+    },
   ],
 }));
 ipcMain.on("software-log:open-folder", () => {});
@@ -96,6 +105,22 @@ app.whenReady().then(async () => {
       out.footerText = (document.querySelector('.footer') || {}).textContent || '';
       out.logRowCount = document.querySelectorAll('.console .log-row').length;
       out.levelLabelCount = document.querySelectorAll('.console .log-level').length;
+      const topbar = document.querySelector('.topbar');
+      const consoleEl = document.querySelector('.console');
+      const footer = document.querySelector('.footer');
+      const footerRect = footer ? footer.getBoundingClientRect() : null;
+      const rows = Array.from(document.querySelectorAll('.console .log-row'));
+      out.geom = {
+        winW: window.innerWidth,
+        winH: window.innerHeight,
+        docHorizontalScrollable: document.documentElement.scrollWidth > window.innerWidth + 1,
+        docVerticalScrollable: document.documentElement.scrollHeight > window.innerHeight + 1,
+        topbarHorizontalScrollable: topbar ? topbar.scrollWidth > topbar.clientWidth + 1 : true,
+        consoleHorizontalScrollable: consoleEl ? consoleEl.scrollWidth > consoleEl.clientWidth + 1 : true,
+        consoleVerticalScrollable: consoleEl ? consoleEl.scrollHeight > consoleEl.clientHeight + 1 : false,
+        footerVisible: footerRect ? footerRect.bottom <= window.innerHeight + 1 && footerRect.top >= 0 : false,
+        rowsFit: rows.every((row) => row.scrollWidth <= row.clientWidth + 1),
+      };
       return out;
     })()`);
     result.probe = probe;
@@ -157,14 +182,28 @@ app.whenReady().then(async () => {
       result.failed = true;
       result.steps.push({ step: "file-log-footer-present", got: probe.footerText });
     }
-    // 3 条注入日志应渲染为 3 行 + 3 个级别标签
-    if (probe.logRowCount !== 3 || probe.levelLabelCount !== 3) {
+    // 4 条注入日志应渲染为 4 行 + 4 个级别标签，其中最后一条是无空格长异常文本。
+    if (probe.logRowCount !== 4 || probe.levelLabelCount !== 4) {
       result.failed = true;
       result.steps.push({
         step: "log-rows-wrong",
         rows: probe.logRowCount,
         levels: probe.levelLabelCount,
       });
+    }
+    const geom = probe.geom || {};
+    const layoutChecks = {
+      "window-not-horizontally-scrollable": geom.docHorizontalScrollable === false,
+      "window-not-vertically-scrollable": geom.docVerticalScrollable === false,
+      "topbar-not-horizontally-scrollable": geom.topbarHorizontalScrollable === false,
+      "console-not-horizontally-scrollable": geom.consoleHorizontalScrollable === false,
+      "rows-not-horizontally-scrollable": geom.rowsFit === true,
+      "footer-visible": geom.footerVisible === true,
+    };
+    const failedLayout = Object.keys(layoutChecks).filter((key) => !layoutChecks[key]);
+    if (failedLayout.length > 0) {
+      result.failed = true;
+      result.steps.push({ step: "layout-checks-failed", failedLayout, geom });
     }
     if (result.consoleErrors.length > 0) {
       result.failed = true;

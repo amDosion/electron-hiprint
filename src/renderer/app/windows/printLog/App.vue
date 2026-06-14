@@ -81,7 +81,7 @@ const columns: ColumnConfig[] = [
     width: '80px',
     formatter: (_row, _column, cellValue) => `${cellValue}页`,
   },
-  { prop: 'status', label: '状态', align: 'center', width: '74px', sortable: 'custom' },
+  { prop: 'status', label: '状态', align: 'center', width: '96px', sortable: 'custom' },
   { prop: 'errorMessage', label: '错误信息', showOverflowTooltip: true },
   { prop: 'action', label: '操作', align: 'center', width: '120px' },
 ]

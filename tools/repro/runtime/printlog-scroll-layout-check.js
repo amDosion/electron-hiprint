@@ -10,7 +10,9 @@
 //   2) 表体可内部滚动（el-scrollbar__wrap scrollHeight > clientHeight）
 //   3) 分页固定且完整可见（getBoundingClientRect().bottom <= innerHeight）
 //   4) 不出现横向滚动条（筛选区/表格区均不得撑宽窗口）
-//   5) 表格区有确定高度（flex 解析出像素高，>0）
+//   5) 筛选按钮不被挤到第二行
+//   6) 状态徽章不被状态列裁剪成省略号
+//   7) 表格区有确定高度（flex 解析出像素高，>0）
 // 运行：npx electron tools/repro/runtime/printlog-scroll-layout-check.js
 // 约定：stdout 打印 LAYOUT_RESULT <json>，failed=false 且退出码 0 表示通过。
 
@@ -73,7 +75,7 @@ function fail(message) {
 app.whenReady().then(async () => {
   registerAssetProtocol();
   const win = new BrowserWindow({
-    width: 1100,
+    width: 1040,
     height: 600,
     show: false,
     webPreferences: {
@@ -126,6 +128,18 @@ app.whenReady().then(async () => {
       rowCount: document.querySelectorAll('.table .el-table__body tr').length,
       paginationBottom: pr ? Math.round(pr.bottom) : -1,
       paginationVisible: pr ? (pr.bottom <= window.innerHeight + 1 && pr.top >= 0) : false,
+      searchFormHeight: Math.round(document.querySelector('.search-form')?.getBoundingClientRect().height || -1),
+      filterFirstTop: Math.round(document.querySelector('.filter-time')?.getBoundingClientRect().top || -1),
+      buttonTop: Math.round(document.querySelector('.search-btns')?.getBoundingClientRect().top || -1),
+      filterButtonsSameRow: (() => {
+        const first = document.querySelector('.filter-time')?.getBoundingClientRect();
+        const buttons = document.querySelector('.search-btns')?.getBoundingClientRect();
+        return !!first && !!buttons && Math.abs(first.top - buttons.top) <= 3;
+      })(),
+      statusCellsFit: Array.from(document.querySelectorAll('.status-pill')).every((pill) => {
+        const cell = pill.closest('.cell');
+        return cell && pill.scrollWidth <= cell.clientWidth + 1 && cell.scrollWidth <= cell.clientWidth + 1;
+      }),
     };
   })()`);
 
@@ -140,6 +154,8 @@ app.whenReady().then(async () => {
       geom.tableWrapHorizontalScrollable === false && geom.bodyHorizontalScrollable === false,
     "table-body-scrolls": geom.bodyScrollable === true,
     "pagination-fixed-visible": geom.paginationVisible === true,
+    "filter-actions-stay-on-first-row": geom.filterButtonsSameRow === true,
+    "status-cells-not-clipped": geom.statusCellsFit === true,
     "table-region-has-height": geom.tableWrapH > 0,
     "rows-rendered": geom.rowCount === 50,
     "no-console-errors": consoleErrors.length === 0,
