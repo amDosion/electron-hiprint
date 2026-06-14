@@ -1,6 +1,6 @@
 {
   "name": "electron-hiprint",
-  "version": "1.0.59",
+  "version": "1.0.60",
   "description": "vue3-print client",
   "main": "main.js",
   "author": "CcSimple<840054486@qq.com>",
