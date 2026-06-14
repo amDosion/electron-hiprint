@@ -84,7 +84,7 @@ function main() {
   record(
     risks,
     "PLUGIN-DIST-MAP-MISSING",
-    pluginPackage.includes("vue-plugin-hiprint.js") &&
+    pluginPackage.includes("vue3-print.runtime.js") &&
       pluginPackage.includes("vue3-print.css") &&
       pluginPackage.includes("print-lock.css") &&
       pluginPackage.includes("cacheName"),

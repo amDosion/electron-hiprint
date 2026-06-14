@@ -121,19 +121,15 @@
         script.setAttribute("type", "text/javascript");
 
         // 加载插件
-        const scriptSrc = `${pluginBaseUrl}/${pluginVersion}_vue-plugin-hiprint.js`;
+        const scriptSrc = `${pluginBaseUrl}/${pluginVersion}_vue3-print.runtime.js`;
 
         script.setAttribute("src", scriptSrc);
         script.onload = () => {
-          const pluginGlobal =
-            window["vue-plugin-hiprint"] ||
-            window.VuePluginHiprint ||
-            window["@amdosion/vue3-print"] ||
-            window.Vue3Print;
+          const pluginGlobal = window.Vue3Print;
           if (!pluginGlobal || !pluginGlobal.hiprint) {
             ipc.send("showMessageBox", {
               title: "插件加载错误",
-              message: `【${pluginVersion}】版本未暴露 hiprint，请升级客户端或重新启动后重试！`,
+              message: `@amdosion/vue3-print【${pluginVersion}】版本未暴露 hiprint 全局，请升级客户端或重新启动后重试！`,
               type: "error",
               buttons: ["我知道了"],
             });

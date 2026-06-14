@@ -12,8 +12,8 @@ const FALLBACK_PLUGIN_VERSION = "1.0.4";
 
 const PLUGIN_DIST_FILE_MAP = [
   {
-    sourceName: "vue-plugin-hiprint.js",
-    cacheName: "vue-plugin-hiprint.js",
+    sourceName: "vue3-print.runtime.js",
+    cacheName: "vue3-print.runtime.js",
     required: true,
     description: "Electron 内置渲染 browser/global 脚本",
   },
@@ -32,7 +32,7 @@ const PLUGIN_DIST_FILE_MAP = [
 ];
 
 const COMPATIBLE_CACHE_REQUIRED_FILES = [
-  "vue-plugin-hiprint.js",
+  "vue3-print.runtime.js",
   "print-lock.css",
 ];
 
@@ -53,7 +53,7 @@ function getCompatiblePluginVersions(pluginDir) {
   const files = new Set(fs.readdirSync(pluginDir));
   const versions = new Set();
   for (const fileName of files) {
-    const suffix = "_vue-plugin-hiprint.js";
+    const suffix = "_vue3-print.runtime.js";
     if (fileName.endsWith(suffix)) {
       versions.add(fileName.slice(0, -suffix.length));
     }
