@@ -1,8 +1,8 @@
 "use strict";
 
-const { protocol } = require("electron");
+const { protocol, net } = require("electron");
 const path = require("path");
-const fs = require("fs");
+const { pathToFileURL } = require("node:url");
 const { SCHEME, HOST, assetsRoot } = require("./asset-url");
 
 // app:// 提供静态资源时按扩展名标注 MIME，确保 .js/.css 被正确解析执行。
@@ -76,27 +76,50 @@ function registerAssetProtocol() {
     if (!filePath) {
       return new Response("Forbidden", { status: 403 });
     }
-    let stat;
+
+    // 用 net.fetch 转发到 file://，由 Electron 网络栈原生流式读取本地文件，
+    // 不再在主进程事件循环里同步把 MB 级 HTML 读进 Buffer 再构造 Response——
+    // 后者在运行期主进程繁忙（中转 socket + 持续写 sqlite）+ 大文件 + 并发打开时，
+    // 会令窗口页面加载间歇 ERR_FAILED / 极慢（见
+    // .investigations/2026-06-14-log-window-spinner-overlay-timing.md）。
+    // 路径穿越已由 resolveAssetPath 校验，这里只服务 assets/ 内的合法文件。
+    const isDocument = filePath.toLowerCase().endsWith(".html");
+    const startedAt = isDocument ? Date.now() : 0;
+
+    let upstream;
     try {
-      stat = await fs.promises.stat(filePath);
-    } catch {
+      upstream = await net.fetch(pathToFileURL(filePath).toString());
+    } catch (error) {
+      if (isDocument) {
+        console.error(
+          `app:// 提供 ${path.basename(filePath)} 失败 ${Date.now() -
+            startedAt}ms ${error && error.message ? error.message : error}`,
+        );
+      }
       return new Response("Not Found", { status: 404 });
     }
-    if (!stat.isFile()) {
-      return new Response("Not Found", { status: 404 });
+
+    if (isDocument) {
+      console.log(
+        `app:// 提供 ${path.basename(filePath)} ${Date.now() -
+          startedAt}ms status=${upstream.status}`,
+      );
     }
-    let data;
-    try {
-      data = await fs.promises.readFile(filePath);
-    } catch {
-      return new Response("Not Found", { status: 404 });
-    }
+
+    // 显式按扩展名覆盖 content-type：Windows 下 file:// 的 .js MIME 可能取自系统
+    // 注册表（常为 text/plain），会令 app:// 这个 standard+secure 源下的 ES module
+    // 拒绝执行；故对已知类型强制设置正确 MIME。body 保持 ReadableStream 流式，不入主进程内存。
     const ext = path.extname(filePath).toLowerCase();
-    const contentType = MIME[ext] || "application/octet-stream";
-    return new Response(data, {
-      status: 200,
-      headers: { "content-type": contentType },
-    });
+    const contentType = MIME[ext];
+    if (contentType) {
+      const headers = new Headers(upstream.headers);
+      headers.set("content-type", contentType);
+      return new Response(upstream.body, {
+        status: upstream.status,
+        headers,
+      });
+    }
+    return upstream;
   });
 }
 
