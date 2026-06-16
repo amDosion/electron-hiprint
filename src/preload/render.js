@@ -11,7 +11,6 @@ const sendChannels = new Set([
 ]);
 
 contextBridge.exposeInMainWorld("hiprintRender", {
-  pluginVersion: ipcRenderer.sendSync("hiprint:store-get", "pluginVersion"),
   on(channel, callback) {
     if (onChannels.has(channel) && typeof callback === "function") {
       ipcRenderer.on(channel, (event, data) => callback(data));

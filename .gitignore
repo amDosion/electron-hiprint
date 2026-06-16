@@ -20,6 +20,3 @@ out/
 tools/database.sqlite
 /build-info.json
 .investigations/
-# 内置渲染插件为「构建期」从 npm 烘焙的产物，不纳入版本库（dev 用 npm run sync-plugin 生成）
-/plugin/*
-!/plugin/.gitkeep

@@ -18,6 +18,8 @@ const WINDOW_ENTRIES: Record<string, string> = {
   set: resolve(rendererRoot, "set.html"),
   printLog: resolve(rendererRoot, "printLog.html"),
   softwareLog: resolve(rendererRoot, "softwareLog.html"),
+  // 打印渲染窗口（非 Vue 纯 TS 入口）：经 ESM 内联消费 @amdosion/vue3-print，取代旧 runtime.js。
+  render: resolve(rendererRoot, "render.html"),
 };
 
 // 构建时 tools/build-renderer.js 会逐窗口设置 VITE_WINDOW；singlefile 只支持单入口。

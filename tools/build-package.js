@@ -75,7 +75,9 @@ function build(targetName) {
     throw new Error(`Unknown build target: ${targetName}`);
   }
 
-  runNodeScript(path.join(repoRoot, "tools", "sync-builtin-plugin.js"));
+  // 渲染层（含经 ESM 内联的 @amdosion/vue3-print 打印引擎）由 build-renderer 逐窗口
+  // 打成自包含单 HTML 输出到 assets/；插件随此步进入安装包，不再有构建期 npm 烘焙。
+  runNodeScript(path.join(repoRoot, "tools", "build-renderer.js"));
   runNodeScript(
     path.join(repoRoot, "tools", "run-electron-builder.js"),
     target.builderArgs,

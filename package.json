@@ -14,13 +14,11 @@
     "url": "https://github.com/amDosion/electron-hiprint/issues"
   },
   "scripts": {
-    "prestart": "node ./tools/sync-builtin-plugin.js",
     "build:renderer": "node ./tools/build-renderer.js",
     "typecheck": "vue-tsc --noEmit",
     "start": "node ./build/write-build-info.js && node start.js",
     "postinstall": "npm run fix-sqlite3 && node ./build/write-build-info.js",
     "fix-sqlite3": "node ./build/fixSqlite3bug.js",
-    "sync-plugin": "node ./tools/sync-builtin-plugin.js",
     "build-w": "node ./tools/build-package.js build-w",
     "build-w-64": "node ./tools/build-package.js build-w-64",
     "build-m": "node ./tools/build-package.js build-m",
@@ -43,11 +41,7 @@
     },
     "asar": true,
     "asarUnpack": [
-      "assets/**",
-      "node_modules/jquery/dist/jquery.min.js",
-      "node_modules/nzh/dist/nzh.min.js",
-      "node_modules/bwip-js/dist/bwip-js.js",
-      "node_modules/jsbarcode/dist/JsBarcode.all.min.js"
+      "assets/**"
     ],
     "files": [
       "**/*",
@@ -57,7 +51,6 @@
       "!tools/repro/**",
       "!tools/build-package.js",
       "!tools/run-electron-builder.js",
-      "!tools/sync-builtin-plugin.js",
       "!tools/code_compress.js",
       "!tools/rename.js",
       "!out/**",
@@ -66,9 +59,6 @@
       "!src/renderer/**",
       "!vite.config.ts",
       "!tsconfig*.json"
-    ],
-    "extraResources": [
-      "plugin/*"
     ],
     "electronDownload": {
       "mirror": "https://npmmirror.com/mirrors/electron/"
@@ -146,6 +136,7 @@
     "win32-pdf-printer": "^4.0.1"
   },
   "devDependencies": {
+    "@amdosion/vue3-print": "^1.0.28",
     "@element-plus/icons-vue": "^2.3.2",
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^25.9.2",

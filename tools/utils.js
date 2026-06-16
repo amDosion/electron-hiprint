@@ -10,7 +10,6 @@ const ipp = require("ipp");
 const { machineIdSync } = require("node-machine-id");
 const Store = require("electron-store");
 const { v7: uuidv7 } = require("uuid");
-const { getLatestCompatiblePluginVersion } = require("../src/plugin-package");
 
 /**
  * win32-pdf-printer 的 paper-size-info.exe 会被 electron-builder 解压到 app.asar.unpacked。
@@ -89,13 +88,6 @@ if (fs.existsSync(buildInfoPath)) {
 
 Store.initRenderer();
 
-function getDefaultPluginVersion() {
-  const pluginDir = app.isPackaged
-    ? path.join(app.getAppPath(), "../", "plugin")
-    : path.join(app.getAppPath(), "plugin");
-  return getLatestCompatiblePluginVersion(pluginDir);
-}
-
 const schema = {
   mainTitle: {
     type: "string",
@@ -160,10 +152,6 @@ const schema = {
   token: {
     type: ["string", "null"],
     default: null,
-  },
-  pluginVersion: {
-    type: "string",
-    default: getDefaultPluginVersion(),
   },
   pdfPath: {
     type: "string",

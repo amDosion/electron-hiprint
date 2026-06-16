@@ -4,8 +4,9 @@ name: Auto version tag
 #   代码推送到 master/main，或插件包 @amdosion/vue3-print（vue3-print 仓库）发布 npm 后，
 #   本工作流会准备客户端版本 -> 提交 package.json/package-lock.json -> 打 tag。
 #   tag 推送触发 release.yml；release 构建阶段由 tools/build-package.js ->
-#   tools/sync-builtin-plugin.js 在「构建期」从 npm 拉取最新插件烘焙进安装包。
-#   插件因此永远只在构建产物里，绝不进版本库。
+#   tools/build-renderer.js 经 Vite 把 @amdosion/vue3-print(ESM) 内联进渲染层 assets/，
+#   插件随渲染产物进入安装包（不再有构建期 npm 烘焙，也绝不进版本库）。
+#   注：客户端打包消费的插件版本取自 devDependencies/package-lock，升级插件需更新该依赖。
 #
 # 版本策略：
 #   - 当前 package.json version 没有同名 tag：直接使用当前版本补 tag。

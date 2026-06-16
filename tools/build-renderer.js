@@ -8,7 +8,7 @@
 const path = require("path");
 const { spawnSync } = require("child_process");
 
-const WINDOWS = ["index", "set", "printLog", "softwareLog"];
+const WINDOWS = ["index", "set", "printLog", "softwareLog", "render"];
 
 const isWin = process.platform === "win32";
 const viteBin = path.resolve(

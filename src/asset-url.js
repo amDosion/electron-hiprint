@@ -39,8 +39,8 @@ function getAssetUrl(...assetPath) {
   return `${SCHEME}://${HOST}/${encoded}`;
 }
 
-// 打印引擎窗口（render.html / print.html）的 CSP 内置 file: scheme、围绕 file:// 设计，
-// 保留 file:// 加载以维持其既有行为；不纳入 app:// 迁移范围。
+// print.html 的 CSP 内置 file: scheme、围绕 file:// 设计，保留 file:// 加载以维持既有行为。
+// （render.html 已随插件 ESM 化改走 app://，见 src/render.js。）
 function getFileAssetUrl(...assetPath) {
   return pathToFileURL(path.join(fileAssetsRoot(), ...assetPath)).href;
 }

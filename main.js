@@ -29,7 +29,6 @@ const {
   registerAssetSchemeAsPrivileged,
   registerAssetProtocol,
 } = require("./src/asset-protocol");
-const { resolveBuiltinPluginVersion } = require("./src/plugin-sync");
 const { runOnlineUpgrade } = require("./src/online-upgrade-runner");
 const {
   store,
@@ -271,7 +270,6 @@ async function initialize() {
   // 仅放行 preload 实际需要的非敏感键，杜绝渲染进程读取 token/transitToken 等凭据。
   const STORE_GET_ALLOWED_KEYS = new Set([
     "mainTitle", // index preload 窗口标题
-    "pluginVersion", // render preload 插件版本
     "rePrint", // printLog preload 重打开关
   ]);
   ipcMain.on("hiprint:store-get", (event, key) => {
@@ -299,7 +297,6 @@ async function initialize() {
       "pdfPath",
       "defaultPrinter",
       "disabledGpu",
-      "pluginVersion",
       "rePrint",
       "bindHost",
       "exportDirectory",
@@ -376,8 +373,6 @@ async function createWindow() {
   // 初始化系统设置
   systemSetup();
 
-  await ensureBuiltinPlugin();
-
   // 加载主页面
   MAIN_WINDOW.webContents.loadURL(getAssetUrl("index.html"));
 
@@ -447,15 +442,6 @@ async function createWindow() {
   }
 
   return MAIN_WINDOW;
-}
-
-function ensureBuiltinPlugin() {
-  try {
-    const result = resolveBuiltinPluginVersion();
-    console.log(`==> 内置渲染插件已启用: ${result.pluginVersion} <==`);
-  } catch (error) {
-    console.error(`==> 内置渲染插件解析失败: ${error.message} <==`);
-  }
 }
 
 /**

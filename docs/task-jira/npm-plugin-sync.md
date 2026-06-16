@@ -1,5 +1,12 @@
 # HIPRINT-PLUGIN-NPM-SYNC: Built-In Renderer Plugin Tracks @amdosion/vue3-print
 
+> **已废弃（2026-06-15）**：本任务描述的「构建期从 npm 烘焙 browser/global runtime 产物 +
+> 运行时按版本名解析 plugin/ 目录」机制已整体移除。render 打印渲染窗口现经 Vite 直接以 ESM
+> 内联消费 `@amdosion/vue3-print`（见 `src/renderer/app/windows/render/`、`tools/build-renderer.js`、
+> `.investigations/2026-06-15-render-runtime-to-esm-cleanup.md`）。不再有 `tools/sync-builtin-plugin.js`、
+> `src/plugin-package.js`、`src/plugin-sync.js`、`plugin/` 目录或 `pluginVersion` 配置项。
+> 以下内容仅作历史记录保留。
+
 ## Context
 
 The Electron client used to expose an "internal renderer plugin" version picker in the EXE settings UI. That made users choose or download a client implementation detail manually, and it still pointed at the old `vue-plugin-hiprint` package path.

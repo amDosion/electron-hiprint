@@ -93,7 +93,6 @@ npm run build-w-64
   "transitToken": "hiprint-youcode",
   "allowNotify": true,
   "closeType": "tray",
-  "pluginVersion": "0.0.58-fix",
   "logPath": "C:\\Users\\Administrator\\AppData\\Roaming\\hiprint\\logs",
   "pdfPath": "C:\\Users\\Administrator\\AppData\\Local\\Temp",
   "defaultPrinter": "",
@@ -116,12 +115,11 @@ npm run build-w-64
 | 8    | transitUrl             | String           | 中转服务地址                                          |
 | 9    | transitToken           | String           | 中转服务令牌                                          |
 | 10   | closeType              | String           | 窗口关闭行为（tray 或 quit）                          |
-| 11   | pluginVersion          | String           | vue3-print 插件版本                           |
-| 12   | logPath                | String           | 日志路径                                              |
-| 13   | pdfPath                | String           | 临时文件路径                                          |
-| 14   | defaultPrinter         | String           | 默认打印机                                            |
-| 15   | disabledGpu            | Boolean          | 禁用 GPU 加速，可解决部分设备打印模糊问题，默认 false |
-| 16   | rePrint[[1]](#tips1)   | Boolean          | 是否允许重打，默认 true                               |
+| 11   | logPath                | String           | 日志路径                                              |
+| 12   | pdfPath                | String           | 临时文件路径                                          |
+| 13   | defaultPrinter         | String           | 默认打印机                                            |
+| 14   | disabledGpu            | Boolean          | 禁用 GPU 加速，可解决部分设备打印模糊问题，默认 false |
+| 15   | rePrint[[1]](#tips1)   | Boolean          | 是否允许重打，默认 true                               |
 
 > <span id="tips1">[1]</span> `mainTitle` 和 `rePrint` 字段在设置页面中未显式提供设置，方便各位可以在不修改源码二开的情况下通过配置快速实现定制化和高级功能，且不易被客户篡改，详见下方[覆盖默认配置方法](#覆盖默认配置方法)。
 
@@ -573,12 +571,6 @@ socket.on("error", (res) => {
 对于 vue3-print 模板，只需要提供 template(json、jsonString) 和 data(json) 即可。
 
 非 vue3-print 模板，你需要提供 html（需要提供完整的样式含 UI、项目内部样式）。
-
-<div align="center">
-
-![image](./res/electron-hiprint_set_pluginVersion.png)
-
-</div>
 
 | apiName              | 参数                        | 说明                                               |
 | -------------------- | --------------------------- | -------------------------------------------------- |

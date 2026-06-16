@@ -6,7 +6,7 @@ const path = require("path");
 const { Jimp } = require("jimp");
 const dayjs = require("dayjs");
 
-const { getFileAssetUrl } = require("./asset-url");
+const { getAssetUrl } = require("./asset-url");
 const { store, getCurrentPrintStatusByName } = require("../tools/utils");
 const {
   getPrinterReadiness,
@@ -90,8 +90,9 @@ async function createRenderWindow() {
   // 创建打印窗口
   RENDER_WINDOW = new BrowserWindow(windowOptions);
 
-  // 加载打印渲染进程页面
-  RENDER_WINDOW.webContents.loadURL(getFileAssetUrl("render.html"));
+  // 加载打印渲染进程页面（经 app:// 加载：Vite 单文件内联 ESM 模块需真实 origin，
+  // 复用 asset-protocol 的 net.fetch 流式伺服；插件已内联，不再注入外部 runtime.js）
+  RENDER_WINDOW.webContents.loadURL(getAssetUrl("render.html"));
 
   RENDER_WINDOW.on("ready-to-show", () => {
     const windowBounds = RENDER_WINDOW.getBounds();

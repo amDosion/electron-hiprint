@@ -33,13 +33,15 @@ function main() {
   const releaseWorkflow = read(".github/workflows/release.yml");
   const autoTagWorkflow = read(".github/workflows/plugin-bump.yml");
 
-  const directBuilderScripts = Object.entries(scripts).filter(([name, value]) => {
-    return (
-      /^build-/.test(name) &&
-      typeof value === "string" &&
-      (/&&/.test(value) || /electron-builder/.test(value))
-    );
-  });
+  const directBuilderScripts = Object.entries(scripts).filter(
+    ([name, value]) => {
+      return (
+        /^build-/.test(name) &&
+        typeof value === "string" &&
+        (/&&/.test(value) || /electron-builder/.test(value))
+      );
+    },
+  );
 
   record(
     risks,
@@ -53,7 +55,10 @@ function main() {
   record(
     risks,
     "IPP-RUNTIME-DEPENDENCY-MISSING",
-    Object.prototype.hasOwnProperty.call(packageJson.dependencies || {}, "ipp") &&
+    Object.prototype.hasOwnProperty.call(
+      packageJson.dependencies || {},
+      "ipp",
+    ) &&
       packageLock.packages &&
       packageLock.packages["node_modules/ipp"] &&
       runtimeUtils.includes('require("ipp")'),
@@ -67,10 +72,10 @@ function main() {
       buildWrapper.includes("spawnSync") &&
       buildWrapper.includes("shell: false") &&
       buildWrapper.includes("run-electron-builder.js") &&
-      buildWrapper.includes("sync-builtin-plugin") &&
+      buildWrapper.includes("build-renderer.js") &&
       buildWrapper.includes('"tools"') &&
       buildWrapper.includes('"rename"'),
-    "tools/build-package.js should run sync-plugin, electron-builder, and rename through explicit argv arrays with shell disabled.",
+    "tools/build-package.js should run build-renderer (bundles the ESM plugin into assets/), electron-builder, and rename through explicit argv arrays with shell disabled.",
   );
 
   record(
@@ -113,9 +118,13 @@ function main() {
     installersWorkflow.includes("actions/upload-artifact") &&
       installersWorkflow.includes("Verify installer outputs") &&
       installersWorkflow.includes("out/hiprint_${{ matrix.artifact }}-*.exe") &&
-      installersWorkflow.includes("out/hiprint_${{ matrix.artifact }}-*.exe.blockmap") &&
+      installersWorkflow.includes(
+        "out/hiprint_${{ matrix.artifact }}-*.exe.blockmap",
+      ) &&
       installersWorkflow.includes("out/hiprint_${{ matrix.artifact }}-*.dmg") &&
-      installersWorkflow.includes("out/hiprint_${{ matrix.artifact }}-*.tar.xz") &&
+      installersWorkflow.includes(
+        "out/hiprint_${{ matrix.artifact }}-*.tar.xz",
+      ) &&
       installersWorkflow.includes("out/hiprint_${{ matrix.artifact }}-*.deb") &&
       renameTool.includes(".exe.blockmap"),
     "The installer workflow should verify and upload Windows, macOS, and Linux installer artifacts.",
@@ -135,7 +144,9 @@ function main() {
       releaseWorkflow.includes("actions/download-artifact@v8") &&
       !releaseWorkflow.includes("softprops/action-gh-release@v2") &&
       releaseWorkflow.includes("softprops/action-gh-release@v3") &&
-      releaseWorkflow.includes("out/hiprint_${{ matrix.artifact }}-*.exe.blockmap"),
+      releaseWorkflow.includes(
+        "out/hiprint_${{ matrix.artifact }}-*.exe.blockmap",
+      ),
     "The tag release workflow should use the same multi-platform build scripts, artifact checks, and Node 24-compatible release actions.",
   );
 
@@ -147,7 +158,9 @@ function main() {
       autoTagWorkflow.includes("branches: [master, main]") &&
       autoTagWorkflow.includes("repository_dispatch") &&
       autoTagWorkflow.includes("secrets.RELEASE_PAT") &&
-      autoTagWorkflow.includes("startsWith(github.event.head_commit.message, 'chore(release): client ')") &&
+      autoTagWorkflow.includes(
+        "startsWith(github.event.head_commit.message, 'chore(release): client ')",
+      ) &&
       autoTagWorkflow.includes("npm version patch --no-git-tag-version") &&
       autoTagWorkflow.includes("--allow-same-version") &&
       autoTagWorkflow.includes('git push origin "${CLIENT_VERSION}"'),

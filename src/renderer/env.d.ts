@@ -6,6 +6,14 @@ declare module '*.vue' {
   export default component
 }
 
+// jQuery 自身不带类型（未安装 @types/jquery）。render 垫片仅用 $(node).find()/.length，
+// 作为厂商胶水按 any 暴露，限定在 render 垫片范围。nzh/bwip-js/jsbarcode 自带类型，无需声明。
+declare module 'jquery' {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const jquery: any
+  export default jquery
+}
+
 // ---- Electron preload 桥接契约（与 src/preload/*.js 一一对应）----
 // 渲染端只能看到 contextBridge 暴露的最小面，这里据此声明类型。
 
@@ -76,9 +84,27 @@ interface HiprintSoftwareLogBridge {
   openFolder(): void
 }
 
+// render 窗口主进程任务数据（png/pdf/print）。字段动态，保留索引签名以支持 {...data} 透传。
+interface RenderTaskData {
+  html?: unknown
+  template?: unknown
+  data?: unknown
+  templateId?: string
+  [key: string]: unknown
+}
+
+interface HiprintRenderBridge {
+  on(channel: 'png' | 'pdf' | 'print', callback: (data: RenderTaskData) => void): void
+  send(
+    channel: 'capturePage' | 'printToPDF' | 'print' | 'showMessageBox',
+    data?: unknown,
+  ): void
+}
+
 interface Window {
   hiprintIndex?: HiprintIndexBridge
   hiprintSet?: HiprintSetBridge
   hiprintPrintLog?: HiprintPrintLogBridge
   hiprintSoftwareLog?: HiprintSoftwareLogBridge
+  hiprintRender?: HiprintRenderBridge
 }
