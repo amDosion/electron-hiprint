@@ -1110,14 +1110,23 @@ function initServeEvent(server) {
             count: 0,
             updateTime: 0,
           });
-        // 添加片段信息
-        currentInfo.fragments[index] = htmlFragment;
-        // 计数
-        currentInfo.count++;
+        // 仅在「合法 index 且该槽位首次填充」时写入并计数，避免重传/重复/越界
+        // 分片把 count 灌大——否则 count 可能在仍有空洞（某 index 未到达）时就达到
+        // total，join("") 会把缺失槽位输出成 "undefined"，造成打印内容空洞。
+        if (
+          Number.isInteger(index) &&
+          index >= 0 &&
+          index < currentInfo.total &&
+          currentInfo.fragments[index] === undefined
+        ) {
+          currentInfo.fragments[index] = htmlFragment;
+          currentInfo.count++;
+        }
         // 记录更新时间
         currentInfo.updateTime = Date.now();
-        // 全部片段已传输完毕
-        if (currentInfo.count === currentInfo.total) {
+        // 全部片段已传输完毕：因 count 只统计「不同的合法 index 槽位」，
+        // count === total 即等价于 0..total-1 每个槽位都已填充（无空洞校验）。
+        if (currentInfo.total > 0 && currentInfo.count === currentInfo.total) {
           // 清除全局缓存
           delete PRINT_FRAGMENTS_MAPPING[id];
           // 合并全部打印片段信息
