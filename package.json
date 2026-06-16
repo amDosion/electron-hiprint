@@ -136,7 +136,7 @@
     "win32-pdf-printer": "^4.0.1"
   },
   "devDependencies": {
-    "@amdosion/vue3-print": "^1.0.28",
+    "@amdosion/vue3-print": "^1.0.30",
     "@element-plus/icons-vue": "^2.3.2",
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^25.9.2",
