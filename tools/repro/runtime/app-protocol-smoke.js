@@ -4,10 +4,12 @@
 // 复用生产模块 src/asset-protocol.js + src/asset-url.js，验证：
 //   1. app:// 注册为标准+安全来源，真实窗口能从 app:// 加载页面（did-finish-load）；
 //   2. 页面 origin 为 app://bundle（真实安全来源，非 file:// 不透明来源）；
-//   3. handler 能从 assets/ 取真实窗口 HTML（已构建的 index.html 单文件），content-type 为
-//      text/html（证明 MIME 标注与 Response 接线正确；UI 窗口已 singlefile 内联 JS，
-//      生产环境 app:// 不再单独伺服 .js）；
-//   4. 路径穿越请求被 handler 拒绝（HTTP 403）。
+//   3. handler 能从 assets/ 取真实窗口 HTML（已构建的 index.html），content-type 为
+//      text/html（证明 MIME 标注与 Response 接线正确）；
+//   4. handler 能伺服 index.html 引用的外链 JS chunk（assets/assets/*.js），content-type 为
+//      text/javascript（证明去 singlefile 后多 chunk 产物在 app:// standard+secure 源下
+//      能作为 ES module 正确加载执行——这是本协议设计的目标路径）；
+//   5. 路径穿越请求被 handler 拒绝（HTTP 403）。
 // 运行：npx electron tools/repro/runtime/app-protocol-smoke.js
 // 约定：stdout 打印 SMOKE_RESULT <json>，failed=false 且退出码 0 表示通过。
 
@@ -69,13 +71,24 @@ app.whenReady().then(async () => {
     const probe = await win.webContents.executeJavaScript(`(async () => {
       const out = {};
       out.origin = location.origin;
-      // 取一个真实生产窗口（已构建的 singlefile index.html），验证 handler 伺服与 MIME 标注。
+      // 取一个真实生产窗口（已构建的 index.html），验证 handler 伺服与 MIME 标注。
       const r = await fetch('app://bundle/index.html');
       out.htmlOk = r.ok;
       out.htmlStatus = r.status;
       out.htmlType = r.headers.get('content-type');
       const body = await r.text();
       out.htmlLen = body.length;
+      // 去 singlefile 后，index.html 以外链 <script type="module" src="./assets/xxx.js"> 引用 chunk。
+      // 解析出首个 JS chunk 路径并经 app:// 取回，验证 .js 被带 text/javascript 正确伺服。
+      const m = body.match(/src="(?:\\.\\/)?(assets\\/[^"]+\\.js)"/);
+      out.chunkPath = m ? m[1] : null;
+      if (out.chunkPath) {
+        const jr = await fetch('app://bundle/' + out.chunkPath);
+        out.jsOk = jr.ok;
+        out.jsStatus = jr.status;
+        out.jsType = jr.headers.get('content-type');
+        out.jsLen = (await jr.text()).length;
+      }
       let trav;
       try {
         const t = await fetch('app://bundle/..%2f..%2fpackage.json');
@@ -106,6 +119,23 @@ app.whenReady().then(async () => {
     if (!(probe.htmlLen > 0)) {
       result.failed = true;
       result.steps.push({ step: "html-empty", len: probe.htmlLen });
+    }
+    if (!probe.chunkPath) {
+      result.failed = true;
+      result.steps.push({ step: "no-js-chunk-ref-in-html" });
+    } else {
+      if (!probe.jsOk || probe.jsStatus !== 200) {
+        result.failed = true;
+        result.steps.push({ step: "js-fetch-failed", status: probe.jsStatus });
+      }
+      if (!/javascript/.test(probe.jsType || "")) {
+        result.failed = true;
+        result.steps.push({ step: "js-mime-wrong", got: probe.jsType });
+      }
+      if (!(probe.jsLen > 0)) {
+        result.failed = true;
+        result.steps.push({ step: "js-empty", len: probe.jsLen });
+      }
     }
     if (probe.traversalStatus !== 403) {
       result.failed = true;

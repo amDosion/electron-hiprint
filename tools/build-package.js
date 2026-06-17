@@ -75,8 +75,9 @@ function build(targetName) {
     throw new Error(`Unknown build target: ${targetName}`);
   }
 
-  // 渲染层（含经 ESM 内联的 @amdosion/vue3-print 打印引擎）由 build-renderer 逐窗口
-  // 打成自包含单 HTML 输出到 assets/；插件随此步进入安装包，不再有构建期 npm 烘焙。
+  // 渲染层（含经 ESM 消费的 @amdosion/vue3-print 打印引擎）由 build-renderer 逐窗口
+  // 构建到 assets/（窗口 HTML + assets/assets/ 下的 JS/CSS chunk）；插件随此步进入安装包，
+  // 不再有构建期 npm 烘焙。chunk 经 asarUnpack: ["assets/**"] 一并解包，供 app:// 伺服。
   runNodeScript(path.join(repoRoot, "tools", "build-renderer.js"));
   runNodeScript(
     path.join(repoRoot, "tools", "run-electron-builder.js"),
