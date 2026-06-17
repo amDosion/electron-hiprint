@@ -96,8 +96,9 @@ app.whenReady().then(async () => {
       out.appChildCount = appEl ? appEl.children.length : -1;
       out.hasTopbar = !!document.querySelector('.topbar');
       out.brandText = (document.querySelector('.brand') || {}).textContent || '';
-      out.selectCount = document.querySelectorAll('.topbar .el-select').length;
-      out.hasSearch = !!document.querySelector('.topbar .el-input');
+      // 软件日志已去 element-plus，改用原生 <select> + 搜索框（见 App.vue 注释）。
+      out.selectCount = document.querySelectorAll('.topbar select.sl-ctrl').length;
+      out.hasSearch = !!document.querySelector('.topbar .sl-search input');
       out.hasConsole = !!document.querySelector('.console');
       out.hasFooter = !!document.querySelector('.footer');
       out.iconBtnCount = document.querySelectorAll('.sl-icon-btn').length;
@@ -167,7 +168,10 @@ app.whenReady().then(async () => {
         got: probe.iconBtnCount,
       });
     }
-    if (!Array.isArray(probe.iconTitles) || !probe.iconTitles.includes("打开数据库目录")) {
+    if (
+      !Array.isArray(probe.iconTitles) ||
+      !probe.iconTitles.includes("打开数据库目录")
+    ) {
       result.failed = true;
       result.steps.push({
         step: "database-folder-button-missing",
@@ -176,11 +180,17 @@ app.whenReady().then(async () => {
     }
     if (!/sqlite\/software_logs/.test(probe.footerText || "")) {
       result.failed = true;
-      result.steps.push({ step: "sqlite-footer-missing", got: probe.footerText });
+      result.steps.push({
+        step: "sqlite-footer-missing",
+        got: probe.footerText,
+      });
     }
     if (/\.log|…\/logs\//.test(probe.footerText || "")) {
       result.failed = true;
-      result.steps.push({ step: "file-log-footer-present", got: probe.footerText });
+      result.steps.push({
+        step: "file-log-footer-present",
+        got: probe.footerText,
+      });
     }
     // 4 条注入日志应渲染为 4 行 + 4 个级别标签，其中最后一条是无空格长异常文本。
     if (probe.logRowCount !== 4 || probe.levelLabelCount !== 4) {
@@ -193,14 +203,19 @@ app.whenReady().then(async () => {
     }
     const geom = probe.geom || {};
     const layoutChecks = {
-      "window-not-horizontally-scrollable": geom.docHorizontalScrollable === false,
+      "window-not-horizontally-scrollable":
+        geom.docHorizontalScrollable === false,
       "window-not-vertically-scrollable": geom.docVerticalScrollable === false,
-      "topbar-not-horizontally-scrollable": geom.topbarHorizontalScrollable === false,
-      "console-not-horizontally-scrollable": geom.consoleHorizontalScrollable === false,
+      "topbar-not-horizontally-scrollable":
+        geom.topbarHorizontalScrollable === false,
+      "console-not-horizontally-scrollable":
+        geom.consoleHorizontalScrollable === false,
       "rows-not-horizontally-scrollable": geom.rowsFit === true,
       "footer-visible": geom.footerVisible === true,
     };
-    const failedLayout = Object.keys(layoutChecks).filter((key) => !layoutChecks[key]);
+    const failedLayout = Object.keys(layoutChecks).filter(
+      (key) => !layoutChecks[key],
+    );
     if (failedLayout.length > 0) {
       result.failed = true;
       result.steps.push({ step: "layout-checks-failed", failedLayout, geom });

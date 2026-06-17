@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { Search, Refresh, FolderOpened } from '@element-plus/icons-vue'
 import { requireBridge } from '@/shared/bridge'
+
+// 软件日志是一个轻量日志查看器：日期下拉 + 级别下拉 + 搜索框 + 两个图标按钮。
+// 这些都是原生控件等价物，故本窗口刻意不引入 element-plus —— 否则仅 el-select 一个组件
+// 就会拖进 Popper/Tooltip/FocusTrap/Tag 整套浮层机器（实测 ~244KB JS），渲染进程要
+// compile+execute 这套机器才触发 dom-ready，造成托盘打开白屏近 1s。改用原生 <select>/
+// <input>/<button> + 内联 SVG 后，包体只剩 Vue+应用（见
+// .investigations/2026-06-17-log-window-dom-ready-full-element-plus.md 第 11 节）。
 
 // Electron preload 桥接（src/preload/softwareLog.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
 const ipc = requireBridge(window.hiprintSoftwareLog, 'hiprintSoftwareLog', 'preload/softwareLog.js')
@@ -153,37 +159,54 @@ onMounted(async () => {
       软件日志
     </span>
 
-    <el-select
-      class="sl-date"
-      size="small"
+    <select
+      class="sl-ctrl sl-date"
       v-model="currentDate"
-      placeholder="选择日期"
-      no-data-text="暂无日志"
-      @change="handleDateChange"
+      @change="handleDateChange(($event.target as HTMLSelectElement).value)"
     >
-      <el-option v-for="d in dates" :key="d" :label="d" :value="d" />
-    </el-select>
+      <option v-if="!dates.length" value="" disabled>暂无日志</option>
+      <option v-for="d in dates" :key="d" :value="d">{{ d }}</option>
+    </select>
 
-    <el-select class="sl-level" size="small" v-model="levelFilter" placeholder="全部级别">
-      <el-option label="全部级别" value="" />
-      <el-option label="INFO" value="info" />
-      <el-option label="WARN" value="warn" />
-      <el-option label="ERROR" value="error" />
-      <el-option label="DEBUG" value="debug" />
-    </el-select>
+    <select class="sl-ctrl sl-level" v-model="levelFilter">
+      <option value="">全部级别</option>
+      <option value="info">INFO</option>
+      <option value="warn">WARN</option>
+      <option value="error">ERROR</option>
+      <option value="debug">DEBUG</option>
+    </select>
 
-    <el-input class="sl-search" size="small" v-model="keyword" placeholder="搜索关键字" clearable>
-      <template #prefix><el-icon><Search /></el-icon></template>
-    </el-input>
+    <div class="sl-search">
+      <svg class="sl-ic sl-search-ic" viewBox="0 0 1024 1024" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="m795.904 750.72 124.992 124.928a32 32 0 0 1-45.248 45.248L750.656 795.904a416 416 0 1 1 45.248-45.248zM480 832a352 352 0 1 0 0-704 352 352 0 0 0 0 704"
+        />
+      </svg>
+      <input v-model="keyword" type="text" placeholder="搜索关键字" />
+      <button v-if="keyword" class="sl-search-clear" type="button" title="清除" @click="keyword = ''">
+        &times;
+      </button>
+    </div>
 
     <span class="spacer"></span>
 
-    <el-button class="sl-icon-btn" size="small" title="刷新" @click="refresh">
-      <el-icon><Refresh /></el-icon>
-    </el-button>
-    <el-button class="sl-icon-btn" size="small" title="打开数据库目录" @click="openFolder">
-      <el-icon><FolderOpened /></el-icon>
-    </el-button>
+    <button class="sl-icon-btn" type="button" title="刷新" @click="refresh">
+      <svg class="sl-ic" viewBox="0 0 1024 1024" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M771.776 794.88A384 384 0 0 1 128 512h64a320 320 0 0 0 555.712 216.448H654.72a32 32 0 1 1 0-64h149.056a32 32 0 0 1 32 32v148.928a32 32 0 1 1-64 0v-50.56zM276.288 295.616h92.992a32 32 0 0 1 0 64H220.16a32 32 0 0 1-32-32V178.56a32 32 0 0 1 64 0v50.56A384 384 0 0 1 896.128 512h-64a320 320 0 0 0-555.776-216.384z"
+        />
+      </svg>
+    </button>
+    <button class="sl-icon-btn" type="button" title="打开数据库目录" @click="openFolder">
+      <svg class="sl-ic" viewBox="0 0 1024 1024" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M878.08 448H241.92l-96 384h636.16zM832 384v-64H485.76L357.504 192H128v448l57.92-231.744A32 32 0 0 1 216.96 384zm-24.96 512H96a32 32 0 0 1-32-32V160a32 32 0 0 1 32-32h287.872l128.384 128H864a32 32 0 0 1 32 32v96h23.04a32 32 0 0 1 31.04 39.744l-112 448A32 32 0 0 1 807.04 896"
+        />
+      </svg>
+    </button>
   </div>
 
   <div class="console-wrap">
@@ -322,57 +345,138 @@ body {
   flex: 1 1 auto;
 }
 
-.topbar .el-select,
-.topbar .el-input {
-  width: auto;
-}
-
-.topbar .sl-date.el-select {
-  width: 150px;
-}
-.topbar .sl-level.el-select {
-  width: 120px;
-}
-.topbar .sl-search.el-input {
-  width: 200px;
-}
-
-/* element-plus 2.x：输入框边框/背景在 .el-input__wrapper（inset box-shadow），不是 __inner */
-.topbar .el-input__wrapper {
-  background-color: var(--sl-page);
+/* ---- 原生控件统一外观（替代 element-plus el-select / el-input / el-button） ---- */
+/* 下拉框：appearance:none 去掉系统箭头，用 data-uri chevron 复刻 el-select 的下拉指示。 */
+.sl-ctrl {
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 28px 0 10px;
+  border: none;
   border-radius: var(--sl-radius-ctrl);
+  background-color: var(--sl-page);
   box-shadow: 0 0 0 1px var(--sl-border) inset;
-}
-
-.topbar .el-input__inner {
   color: var(--sl-text);
+  font-family: var(--sl-font);
+  font-size: 13px;
+  line-height: 30px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cpath fill='%239aa3b2' d='M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.776a29.12 29.12 0 0 0 0-41.6 30.592 30.592 0 0 0-42.752 0z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 12px 12px;
+  transition: box-shadow 0.15s ease;
 }
 
-.topbar .el-input__inner::placeholder {
-  color: var(--sl-text-3);
+.sl-ctrl:hover {
+  box-shadow: 0 0 0 1px #c5cbd8 inset;
 }
 
-.topbar .el-input__wrapper.is-focus {
+.sl-ctrl:focus {
+  outline: none;
   box-shadow: 0 0 0 1px var(--sl-brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
 }
 
-.sl-icon-btn.el-button {
-  padding: 7px;
+.sl-date {
+  width: 150px;
+}
+.sl-level {
+  width: 120px;
+}
+
+/* 搜索框：包裹层描边 + 内部图标 + 透明 input + 清除按钮，复刻 el-input 带 prefix/clearable 的外观。 */
+.sl-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 200px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 8px 0 10px;
+  border-radius: var(--sl-radius-ctrl);
+  background-color: var(--sl-page);
+  box-shadow: 0 0 0 1px var(--sl-border) inset;
+  transition: box-shadow 0.15s ease;
+}
+
+.sl-search:hover {
+  box-shadow: 0 0 0 1px #c5cbd8 inset;
+}
+
+.sl-search:focus-within {
+  box-shadow: 0 0 0 1px var(--sl-brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
+}
+
+.sl-search-ic {
+  flex: 0 0 auto;
+  color: var(--sl-text-3);
+}
+
+.sl-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--sl-text);
+  font-family: var(--sl-font);
+  font-size: 13px;
+}
+
+.sl-search input::placeholder {
+  color: var(--sl-text-3);
+}
+
+.sl-search-clear {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--sl-border);
+  color: var(--sl-card);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sl-search-clear:hover {
+  background: var(--sl-text-3);
+}
+
+/* 图标按钮：刷新 / 打开数据库目录。 */
+.sl-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   border-radius: var(--sl-radius-ctrl);
   border: 1px solid var(--sl-border);
   background: var(--sl-card);
   color: var(--sl-text-2);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
-.sl-icon-btn.el-button:hover,
-.sl-icon-btn.el-button:focus {
+.sl-icon-btn:hover,
+.sl-icon-btn:focus {
+  outline: none;
   border-color: var(--sl-brand);
   color: var(--sl-brand);
   background: var(--sl-brand-soft);
 }
 
-.sl-icon-btn.el-button .el-icon {
-  font-size: 15px;
+/* 内联 SVG 图标尺寸（顶栏图标按钮 + 搜索框前缀图标） */
+.sl-ic {
+  width: 15px;
+  height: 15px;
 }
 
 /* ---------------- console 区 ---------------- */
