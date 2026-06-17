@@ -20,3 +20,13 @@ out/
 tools/database.sqlite
 /build-info.json
 .investigations/
+
+# 渲染层构建产物：由 tools/build-renderer.js 生成、打包时 build-package.js 重新生成，绝不入版本库
+/assets/index.html
+/assets/printLog.html
+/assets/render.html
+/assets/set.html
+/assets/softwareLog.html
+/assets/assets/
+# unplugin-vue-components 在 vite build 时自动生成的组件类型声明
+/src/renderer/app/types/components.d.ts
