@@ -89,13 +89,14 @@ app.whenReady().then(async () => {
       out.hasBridge = typeof window.hiprintPrintLog === 'object' && window.hiprintPrintLog !== null;
       const appEl = document.querySelector('#app');
       out.appChildCount = appEl ? appEl.children.length : -1;
+      // 打印记录已去 element-plus，改用原生 <table> + 手写分页 + 原生 <select>/datetime-local（见 App.vue 注释）。
       out.hasSearchForm = !!document.querySelector('.search-form');
-      out.hasTable = !!document.querySelector('.el-table');
-      out.headerCells = document.querySelectorAll('.el-table__header-wrapper th').length;
-      out.hasPagination = !!document.querySelector('.el-pagination');
-      out.searchBtnText = (document.querySelector('.search-btns .el-button--primary') || {}).textContent || '';
-      out.selectCount = document.querySelectorAll('.search-form .el-select').length;
-      out.hasDatePicker = !!document.querySelector('.search-form .el-date-editor');
+      out.hasTable = !!document.querySelector('.table-wrap table.table');
+      out.headerCells = document.querySelectorAll('.table-wrap table.table thead th').length;
+      out.hasPagination = !!document.querySelector('.pagination');
+      out.searchBtnText = (document.querySelector('.search-btns .pl-btn-primary') || {}).textContent || '';
+      out.selectCount = document.querySelectorAll('.search-form select.pl-select').length;
+      out.hasDatePicker = document.querySelectorAll('.search-form input[type="datetime-local"]').length >= 2;
       return out;
     })()`);
     result.probe = probe;

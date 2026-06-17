@@ -58,9 +58,10 @@ function mockRows(n) {
       templateId: "tpl-" + i,
       pageNum: (i % 4) + 1,
       status: i % 5 ? "success" : "failed",
-      errorMessage: i % 5
-        ? ""
-        : "示例错误信息：Printer ZDesigner ZT211-203dpi ZPL returned a long status message",
+      errorMessage:
+        i % 5
+          ? ""
+          : "示例错误信息：Printer ZDesigner ZT211-203dpi ZPL returned a long status message",
       rePrintAble: 1,
     });
   }
@@ -107,9 +108,9 @@ app.whenReady().then(async () => {
   await new Promise((r) => setTimeout(r, 600));
 
   const geom = await win.webContents.executeJavaScript(`(() => {
+    // 原生表格：.table-wrap 既是高度容器又是纵向滚动容器（无 el-table 内部 scrollbar wrapper）。
     const tableWrap = document.querySelector('.table-wrap');
-    const bodyWrap = document.querySelector('.table .el-scrollbar__wrap')
-      || document.querySelector('.table .el-table__body-wrapper');
+    const bodyWrap = tableWrap;
     const pager = document.querySelector('.pagination');
     const pr = pager ? pager.getBoundingClientRect() : null;
     return {
@@ -125,7 +126,7 @@ app.whenReady().then(async () => {
       bodyClientW: bodyWrap ? bodyWrap.clientWidth : -1,
       bodyScrollable: bodyWrap ? bodyWrap.scrollHeight > bodyWrap.clientHeight + 1 : false,
       bodyHorizontalScrollable: bodyWrap ? bodyWrap.scrollWidth > bodyWrap.clientWidth + 1 : false,
-      rowCount: document.querySelectorAll('.table .el-table__body tr').length,
+      rowCount: document.querySelectorAll('.table tbody tr').length,
       paginationBottom: pr ? Math.round(pr.bottom) : -1,
       paginationVisible: pr ? (pr.bottom <= window.innerHeight + 1 && pr.top >= 0) : false,
       searchFormHeight: Math.round(document.querySelector('.search-form')?.getBoundingClientRect().height || -1),
@@ -137,7 +138,7 @@ app.whenReady().then(async () => {
         return !!first && !!buttons && Math.abs(first.top - buttons.top) <= 3;
       })(),
       statusCellsFit: Array.from(document.querySelectorAll('.status-pill')).every((pill) => {
-        const cell = pill.closest('.cell');
+        const cell = pill.closest('td');
         return cell && pill.scrollWidth <= cell.clientWidth + 1 && cell.scrollWidth <= cell.clientWidth + 1;
       }),
     };
@@ -149,9 +150,11 @@ app.whenReady().then(async () => {
   // 与其余 8 个 render-smoke 的退出写法一致。
   const checks = {
     "window-not-scrollable": geom.docScrollable === false,
-    "window-not-horizontally-scrollable": geom.docHorizontalScrollable === false,
+    "window-not-horizontally-scrollable":
+      geom.docHorizontalScrollable === false,
     "table-not-horizontally-scrollable":
-      geom.tableWrapHorizontalScrollable === false && geom.bodyHorizontalScrollable === false,
+      geom.tableWrapHorizontalScrollable === false &&
+      geom.bodyHorizontalScrollable === false,
     "table-body-scrolls": geom.bodyScrollable === true,
     "pagination-fixed-visible": geom.paginationVisible === true,
     "filter-actions-stay-on-first-row": geom.filterButtonsSameRow === true,

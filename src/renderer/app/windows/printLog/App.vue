@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, toRaw } from 'vue'
+import { computed, onMounted, reactive, ref, toRaw } from 'vue'
 import dayjs from 'dayjs'
-import { cloneDeep } from 'lodash-es'
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { requireBridge } from '@/shared/bridge'
+
+// 打印记录是一个「分页日志表」（每页 ≤200 行），刻意不引入 element-plus：原生 <table> + 手写分页 +
+// 原生 <select> + <input type="datetime-local"> + 内联 SVG 即可覆盖全部交互，避免 el-table /
+// el-date-picker / el-pagination 拖进整套虚拟滚动 / 日历 / 浮层机器（实测 ~494KB JS、37 个组件）。
+// 改原生后包体只剩 Vue+dayjs+应用，托盘打开无需依赖 V8 code cache 才快（见
+// .investigations/2026-06-17-log-window-dom-ready-full-element-plus.md 第 12 节）。
+// IPC 契约（request-logs / clear-logs / reprint 负载结构、sort.order 取值 ascending/descending）保持不变。
 
 // Electron preload 桥接（src/preload/printLog.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
 const ipc = requireBridge(window.hiprintPrintLog, 'hiprintPrintLog', 'preload/printLog.js')
@@ -12,95 +17,62 @@ const ipc = requireBridge(window.hiprintPrintLog, 'hiprintPrintLog', 'preload/pr
 const rePrintAble = ipc.rePrintAble
 
 interface PrintLogRow {
+  id?: number | string
   timestamp?: string | number
   clientType?: string
+  printer?: string
+  templateId?: string
+  pageNum?: number | string
   status?: string
+  errorMessage?: string
   rePrintAble?: number
   [key: string]: unknown
-}
-
-type CellFormatter = (
-  row: PrintLogRow,
-  column: unknown,
-  cellValue: unknown,
-  index: number,
-) => string
-
-interface ColumnConfig {
-  prop: string
-  label: string
-  width?: string
-  align?: string
-  sortable?: string | boolean
-  showOverflowTooltip?: boolean
-  formatter?: CellFormatter
 }
 
 const logs = ref<PrintLogRow[]>([])
 const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+// sort.order 取值与原 el-table @sort-change 一致：'ascending' / 'descending' / undefined（后端契约不变）
 const sort = ref<{ prop?: string; order?: string }>({ prop: undefined, order: undefined })
 
 const searchData = reactive<{
-  timestamp: string[]
+  startTime: string
+  endTime: string
   clientType: string
   status: string
 }>({
-  timestamp: [],
+  startTime: '',
+  endTime: '',
   clientType: '',
   status: '',
 })
 
-// 列配置：status/clientType 列由作用域插槽渲染语义徽章，故不再设 formatter（其余列保留格式化）
-const columns: ColumnConfig[] = [
-  {
-    label: '序号',
-    prop: 'index',
-    width: '60px',
-    align: 'center',
-    formatter: (_row, _column, _cellValue, index) =>
-      String((currentPage.value - 1) * pageSize.value + index + 1),
-  },
-  {
-    prop: 'timestamp',
-    label: '时间',
-    width: '160px',
-    align: 'center',
-    sortable: 'custom',
-    formatter: (_row, _column, cellValue) =>
-      dayjs(cellValue as string | number).format('YYYY/MM/DD HH:mm:ss'),
-  },
-  { prop: 'clientType', label: '连接类型', align: 'center', width: '102px', sortable: 'custom' },
-  { prop: 'printer', label: '打印机', showOverflowTooltip: true, align: 'center', width: '160px' },
-  { prop: 'templateId', label: '模板 ID', showOverflowTooltip: true, align: 'center', width: '120px' },
-  {
-    prop: 'pageNum',
-    label: '页数',
-    align: 'center',
-    width: '80px',
-    formatter: (_row, _column, cellValue) => `${cellValue}页`,
-  },
-  { prop: 'status', label: '状态', align: 'center', width: '96px', sortable: 'custom' },
-  { prop: 'errorMessage', label: '错误信息', showOverflowTooltip: true },
-  { prop: 'action', label: '操作', align: 'center', width: '120px' },
-]
+const clearConfirmVisible = ref(false)
+const jumpValue = ref('')
+
+function fmtTime(value: unknown): string {
+  return dayjs(value as string | number).format('YYYY/MM/DD HH:mm:ss')
+}
+
+function indexNo(idx: number): number {
+  return (currentPage.value - 1) * pageSize.value + idx + 1
+}
 
 function fetchLogs(): void {
   const condition: string[] = []
   const params: unknown[] = []
-  const data = cloneDeep(searchData)
-  if (
-    dayjs(data.timestamp?.[0] || null).isValid() &&
-    dayjs(data.timestamp?.[1] || null).isValid()
-  ) {
+  // datetime-local 产出 'YYYY-MM-DDTHH:mm:ss'；统一规整为 'YYYY-MM-DD HH:mm:ss' 与后端列格式对齐。
+  const start = searchData.startTime ? dayjs(searchData.startTime) : null
+  const end = searchData.endTime ? dayjs(searchData.endTime) : null
+  if (start?.isValid() && end?.isValid()) {
     condition.push('timestamp >= ? AND timestamp <= ?')
-    params.push(data.timestamp[0])
-    params.push(data.timestamp[1])
+    params.push(start.format('YYYY-MM-DD HH:mm:ss'))
+    params.push(end.format('YYYY-MM-DD HH:mm:ss'))
   }
   const rest: Record<string, string> = {
-    clientType: data.clientType,
-    status: data.status,
+    clientType: searchData.clientType,
+    status: searchData.status,
   }
   Object.keys(rest).forEach((key) => {
     if (rest[key]) {
@@ -108,8 +80,6 @@ function fetchLogs(): void {
       params.push(rest[key])
     }
   })
-  // 传纯对象快照：sort.value 是 Vue 响应式 Proxy，直接经 ipcRenderer.send 结构化克隆会抛
-  // "An object could not be cloned"。展开为普通对象后数据一致且可序列化。
   ipc.send('request-logs', {
     condition,
     params,
@@ -118,46 +88,78 @@ function fetchLogs(): void {
   })
 }
 
-function sortChange({ prop, order }: { prop: string | null; order: string | null }): void {
-  sort.value = { prop: prop ?? undefined, order: order ?? undefined }
+// 服务端排序：点击表头在 升序→降序→无序 之间循环（与原 el-table sortable="custom" 行为一致）。
+function onSort(prop: string): void {
+  if (sort.value.prop !== prop) {
+    sort.value = { prop, order: 'ascending' }
+  } else if (sort.value.order === 'ascending') {
+    sort.value = { prop, order: 'descending' }
+  } else {
+    sort.value = { prop: undefined, order: undefined }
+  }
   currentPage.value = 1
   fetchLogs()
 }
 
-function handleSizeChange(size: number): void {
-  pageSize.value = size
+function sortClass(prop: string): string {
+  if (sort.value.prop !== prop) return ''
+  return sort.value.order === 'ascending' ? 'asc' : sort.value.order === 'descending' ? 'desc' : ''
+}
+
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+
+function rangeArr(a: number, b: number): number[] {
+  const out: number[] = []
+  for (let i = a; i <= b; i++) out.push(i)
+  return out
+}
+
+// 分页按钮序列（窗口 5、首尾常驻、远端折叠为可点省略号），复刻 el-pagination pager-count=5 的观感。
+const pageItems = computed<(number | 'l-dots' | 'r-dots')[]>(() => {
+  const pc = pageCount.value
+  const cur = currentPage.value
+  if (pc <= 7) return rangeArr(1, pc)
+  if (cur <= 4) return [1, 2, 3, 4, 5, 'r-dots', pc]
+  if (cur >= pc - 3) return [1, 'l-dots', pc - 4, pc - 3, pc - 2, pc - 1, pc]
+  return [1, 'l-dots', cur - 1, cur, cur + 1, 'r-dots', pc]
+})
+
+function goPage(p: number): void {
+  const clamped = Math.min(Math.max(1, p), pageCount.value)
+  if (clamped === currentPage.value) return
+  currentPage.value = clamped
   fetchLogs()
 }
 
-function handleCurrentChange(page: number): void {
-  currentPage.value = page
+function jumpBy(delta: number): void {
+  goPage(currentPage.value + delta)
+}
+
+function handleSizeChange(): void {
+  if (currentPage.value > pageCount.value) currentPage.value = pageCount.value
   fetchLogs()
+}
+
+function handleJump(): void {
+  const n = Number(jumpValue.value)
+  if (Number.isFinite(n) && n >= 1) goPage(Math.floor(n))
+  jumpValue.value = ''
 }
 
 function clearLogs(): void {
-  ElMessageBox.confirm('确定要清空日志吗？', '提示', {
-    type: 'warning',
-    confirmButtonText: '确定',
-    cancelButtonText: '取消',
-    center: true,
-    showClose: false,
-    closeOnClickModal: false,
-    closeOnPressEscape: false,
-  })
-    .then(() => {
-      ipc.send('clear-logs')
-      logs.value = []
-      total.value = 0
-    })
-    .catch(() => {
-      /* 用户取消，无需处理 */
-    })
+  clearConfirmVisible.value = true
+}
+
+function confirmClear(): void {
+  ipc.send('clear-logs')
+  logs.value = []
+  total.value = 0
+  clearConfirmVisible.value = false
 }
 
 function handleRePrint(row: PrintLogRow): void {
-  // row 来自 el-table :data="logs"（深 ref），是 Vue 响应式 Proxy；直接 send 会触发结构化克隆
-  // 抛 "An object could not be cloned"，导致重打永远发不出去。toRaw 解包回原始纯对象再发，
-  // 负载结构与主进程 rePrint（按 data.id 读取）的契约不变。
+  // row 来自 :data="logs"（深 ref），是 Vue 响应式 Proxy；直接 send 会触发结构化克隆
+  // 抛 "An object could not be cloned"。toRaw 解包回原始纯对象再发，负载结构与主进程 rePrint 契约不变。
   ipc.send('reprint', toRaw(row))
 }
 
@@ -172,90 +174,173 @@ onMounted(() => {
 </script>
 
 <template>
-  <el-config-provider :locale="zhCn">
-    <el-form :model="searchData" class="search-form" :inline="true" size="small" label-suffix="：">
-      <div class="search-container">
-        <el-form-item class="filter-item filter-time" label="时间" prop="timestamp">
-          <el-date-picker
-            v-model="searchData.timestamp"
-            type="datetimerange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD HH:mm:ss"
-          />
-        </el-form-item>
-        <el-form-item class="filter-item filter-select" label="连接类型" prop="clientType">
-          <el-select v-model="searchData.clientType" placeholder="请选择" clearable>
-            <el-option label="本地" value="local" />
-            <el-option label="中转" value="transit" />
-          </el-select>
-        </el-form-item>
-        <el-form-item class="filter-item filter-select" label="状态" prop="status">
-          <el-select v-model="searchData.status" placeholder="请选择" clearable>
-            <el-option label="成功" value="success" />
-            <el-option label="失败" value="failed" />
-          </el-select>
-        </el-form-item>
-        <div class="search-btns">
-          <el-button type="primary" size="small" @click="fetchLogs">搜索</el-button>
-          <el-button type="danger" size="small" @click="clearLogs">清空</el-button>
-        </div>
+  <!-- 筛选卡片 -->
+  <div class="search-form">
+    <div class="search-container">
+      <div class="filter-item filter-time">
+        <span class="filter-label">时间：</span>
+        <input class="pl-ctrl pl-dt" type="datetime-local" step="1" v-model="searchData.startTime" />
+        <span class="dt-sep">至</span>
+        <input class="pl-ctrl pl-dt" type="datetime-local" step="1" v-model="searchData.endTime" />
       </div>
-    </el-form>
 
-    <div class="table-wrap">
-      <el-table
-        class="table"
-        :data="logs"
-        height="100%"
-        border
-        stripe
-        @sort-change="sortChange"
-      >
-        <el-table-column v-for="column in columns" :key="column.prop" v-bind="column">
-          <template v-if="column.prop === 'action'" #default="{ row }">
-            <el-button
-              :disabled="row.rePrintAble === 0 || !rePrintAble"
-              type="text"
-              @click="handleRePrint(row)"
-            >
-              重打
-            </el-button>
-          </template>
-          <template v-else-if="column.prop === 'status'" #default="{ row }">
-            <span class="status-pill" :class="'status-' + row.status">
-              <span class="pill-dot"></span>{{ row.status === 'success' ? '成功' : '失败' }}
-            </span>
-          </template>
-          <template v-else-if="column.prop === 'clientType'" #default="{ row }">
+      <div class="filter-item filter-select">
+        <span class="filter-label">连接类型：</span>
+        <select class="pl-ctrl pl-select" v-model="searchData.clientType">
+          <option value="">请选择</option>
+          <option value="local">本地</option>
+          <option value="transit">中转</option>
+        </select>
+      </div>
+
+      <div class="filter-item filter-select">
+        <span class="filter-label">状态：</span>
+        <select class="pl-ctrl pl-select" v-model="searchData.status">
+          <option value="">请选择</option>
+          <option value="success">成功</option>
+          <option value="failed">失败</option>
+        </select>
+      </div>
+
+      <div class="search-btns">
+        <button class="pl-btn pl-btn-primary" type="button" @click="fetchLogs">搜索</button>
+        <button class="pl-btn pl-btn-danger" type="button" @click="clearLogs">清空</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 表格 -->
+  <div class="table-wrap">
+    <table class="table">
+      <colgroup>
+        <col style="width: 6%" />
+        <col style="width: 15%" />
+        <col style="width: 9%" />
+        <col style="width: 15%" />
+        <col style="width: 11%" />
+        <col style="width: 7%" />
+        <col style="width: 9%" />
+        <col style="width: 17%" />
+        <col style="width: 11%" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th>序号</th>
+          <th class="sortable" :class="sortClass('timestamp')" @click="onSort('timestamp')">
+            <span class="th-inner">时间<i class="caret"></i></span>
+          </th>
+          <th class="sortable" :class="sortClass('clientType')" @click="onSort('clientType')">
+            <span class="th-inner">连接类型<i class="caret"></i></span>
+          </th>
+          <th>打印机</th>
+          <th>模板 ID</th>
+          <th>页数</th>
+          <th class="sortable" :class="sortClass('status')" @click="onSort('status')">
+            <span class="th-inner">状态<i class="caret"></i></span>
+          </th>
+          <th>错误信息</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="(row, idx) in logs" :key="row.id ?? idx">
+          <td class="td-center">{{ indexNo(idx) }}</td>
+          <td class="td-center">{{ fmtTime(row.timestamp) }}</td>
+          <td class="td-center">
             <span class="type-pill" :class="'type-' + row.clientType">
               {{ row.clientType === 'local' ? '本地' : '中转' }}
             </span>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
+          </td>
+          <td class="cell td-ellipsis" :title="String(row.printer ?? '')">{{ row.printer }}</td>
+          <td class="cell td-ellipsis" :title="String(row.templateId ?? '')">{{ row.templateId }}</td>
+          <td class="td-center">{{ row.pageNum }}页</td>
+          <td class="cell td-center">
+            <span class="status-pill" :class="'status-' + row.status">
+              <span class="pill-dot"></span>{{ row.status === 'success' ? '成功' : '失败' }}
+            </span>
+          </td>
+          <td class="cell td-ellipsis" :title="String(row.errorMessage ?? '')">{{ row.errorMessage }}</td>
+          <td class="td-center">
+            <button
+              class="reprint-btn"
+              type="button"
+              :disabled="row.rePrintAble === 0 || !rePrintAble"
+              @click="handleRePrint(row)"
+            >
+              重打
+            </button>
+          </td>
+        </tr>
+        <tr v-if="!logs.length" class="empty-row">
+          <td colspan="9">暂无数据</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 
-    <div class="pagination">
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        :page-sizes="[20, 50, 100, 200]"
-        :pager-count="5"
-        :total="total"
-        background
-        layout="sizes, prev, pager, next, jumper , -> , total"
-        @size-change="handleSizeChange"
-        @current-change="handleCurrentChange"
-      />
+  <!-- 分页 -->
+  <div class="pagination">
+    <select class="pl-ctrl pl-page-size" v-model.number="pageSize" @change="handleSizeChange">
+      <option :value="20">20 条/页</option>
+      <option :value="50">50 条/页</option>
+      <option :value="100">100 条/页</option>
+      <option :value="200">200 条/页</option>
+    </select>
+    <button class="pager-btn" type="button" :disabled="currentPage <= 1" @click="goPage(currentPage - 1)">
+      ‹
+    </button>
+    <template v-for="(item, i) in pageItems" :key="i">
+      <button
+        v-if="typeof item === 'number'"
+        class="pager-btn"
+        :class="{ active: item === currentPage }"
+        type="button"
+        @click="goPage(item)"
+      >
+        {{ item }}
+      </button>
+      <button
+        v-else
+        class="pager-btn pager-dots"
+        type="button"
+        title="快速翻页"
+        @click="jumpBy(item === 'l-dots' ? -5 : 5)"
+      >
+        …
+      </button>
+    </template>
+    <button
+      class="pager-btn"
+      type="button"
+      :disabled="currentPage >= pageCount"
+      @click="goPage(currentPage + 1)"
+    >
+      ›
+    </button>
+    <span class="pager-jump">
+      跳至
+      <input type="number" min="1" v-model="jumpValue" @keyup.enter="handleJump" />
+      页
+    </span>
+    <span class="pager-total">共 {{ total }} 条</span>
+  </div>
+
+  <!-- 清空确认（替代 ElMessageBox，自包含、不触发阻塞式系统弹窗） -->
+  <div v-if="clearConfirmVisible" class="confirm-mask" @click.self="clearConfirmVisible = false">
+    <div class="confirm-box">
+      <div class="confirm-title">提示</div>
+      <div class="confirm-body">确定要清空日志吗？</div>
+      <div class="confirm-actions">
+        <button class="pl-btn" type="button" @click="clearConfirmVisible = false">取消</button>
+        <button class="pl-btn pl-btn-primary" type="button" @click="confirmClear">确定</button>
+      </div>
     </div>
-  </el-config-provider>
+  </div>
 </template>
 
 <style>
 /* ============================================================
-   打印日志 · 浅色主题视觉（element-plus 2.x）。
+   打印日志 · 浅色主题视觉（原生控件实现，无 element-plus）。
    仅表现层：布局/配色/卡片/状态徽章/分页。逻辑与 IPC 通道未改。
    ============================================================ */
 :root {
@@ -303,6 +388,51 @@ body {
   overflow: hidden;
 }
 
+/* ---------------- 原生表单控件统一外观 ---------------- */
+.pl-ctrl {
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--pl-radius-ctrl);
+  background-color: var(--pl-page);
+  box-shadow: 0 0 0 1px var(--pl-border) inset;
+  color: var(--pl-text);
+  font-family: var(--pl-font);
+  font-size: 13px;
+  transition: box-shadow 0.15s ease;
+}
+
+.pl-ctrl:hover {
+  box-shadow: 0 0 0 1px #c5cbd8 inset;
+}
+
+.pl-ctrl:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--pl-brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
+}
+
+/* 下拉框：去系统箭头 + data-uri chevron。 */
+.pl-select {
+  padding-right: 28px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1024 1024'%3E%3Cpath fill='%239aa3b2' d='M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.776a29.12 29.12 0 0 0 0-41.6 30.592 30.592 0 0 0-42.752 0z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 12px 12px;
+}
+
+/* 控件宽度收紧：两个 datetime-local + 两个 select + 操作按钮需同处一行（见 scroll-layout 回归）。 */
+.pl-select {
+  width: 114px;
+}
+
+.pl-dt {
+  width: 164px;
+}
+
 /* ---------------- 筛选卡片 ---------------- */
 .search-form {
   flex: 0 0 auto;
@@ -323,63 +453,24 @@ body {
   gap: 10px 14px;
 }
 
-/* 每个筛选项不带额外外边距，整体在一行内居中对齐 */
-.search-form .filter-item.el-form-item {
+.filter-item {
   display: inline-flex;
   align-items: center;
-  margin: 0;
+  gap: 6px;
   flex: 0 1 auto;
   min-width: 0;
 }
 
-.search-form .el-form-item__label {
+.filter-label {
   color: var(--pl-text-2);
   font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
-.filter-time .el-date-editor.el-input,
-.filter-time .el-date-editor--datetimerange.el-input__wrapper {
-  width: min(300px, calc(100vw - 120px)) !important;
-}
-
-.filter-select .el-select {
-  width: min(150px, calc(50vw - 70px)) !important;
-}
-
-/* 输入控件（element-plus 2.x 边框/底色在 .el-input__wrapper 上，用 inset box-shadow 描边） */
-.search-form .el-input__wrapper,
-.search-form .el-range-editor.el-input__wrapper {
-  background-color: var(--pl-page);
-  border-radius: var(--pl-radius-ctrl);
-  box-shadow: 0 0 0 1px var(--pl-border) inset;
-  transition: box-shadow 0.15s ease;
-}
-
-.search-form .el-input__wrapper:hover,
-.search-form .el-range-editor.el-input__wrapper:hover {
-  box-shadow: 0 0 0 1px #c5cbd8 inset;
-}
-
-.search-form .el-input__wrapper.is-focus,
-.search-form .el-range-editor.is-active,
-.search-form .el-range-editor.is-active:hover {
-  box-shadow: 0 0 0 1px var(--pl-brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
-}
-
-.search-form .el-range-input {
-  background-color: transparent;
-  color: var(--pl-text);
-}
-
-.search-form .el-input__inner::placeholder,
-.search-form .el-range-input::placeholder {
+.dt-sep {
   color: var(--pl-text-3);
-}
-
-.search-form .el-input__icon,
-.search-form .el-range__icon,
-.search-form .el-range-separator {
-  color: var(--pl-text-3);
+  font-size: 12px;
 }
 
 /* 操作按钮：推到筛选栏右端 */
@@ -391,93 +482,95 @@ body {
   flex: 0 0 auto;
 }
 
-.search-btns .el-button--primary {
-  background: var(--pl-brand-grad);
-  border: none;
+.pl-btn {
+  height: 30px;
+  padding: 0 16px;
   border-radius: var(--pl-radius-ctrl);
-  font-weight: 600;
-  box-shadow: 0 2px 6px rgba(51, 88, 224, 0.25);
-  transition: filter 0.15s ease, box-shadow 0.15s ease;
+  border: 1px solid var(--pl-border);
+  background: var(--pl-card);
+  color: var(--pl-text-2);
+  font-family: var(--pl-font);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: filter 0.15s ease, box-shadow 0.15s ease, background 0.15s ease,
+    border-color 0.15s ease, color 0.15s ease;
 }
 
-.search-btns .el-button--primary:hover,
-.search-btns .el-button--primary:focus {
+.pl-btn:hover {
+  border-color: #c5cbd8;
+}
+
+.pl-btn-primary {
+  background: var(--pl-brand-grad);
+  border: none;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(51, 88, 224, 0.25);
+}
+
+.pl-btn-primary:hover {
   filter: brightness(1.06);
   box-shadow: 0 3px 10px rgba(51, 88, 224, 0.32);
 }
 
-.search-btns .el-button--primary:active {
+.pl-btn-primary:active {
   filter: brightness(0.96);
 }
 
-/* 清空按钮：白底 + 红描边 + 红字 */
-.search-btns .el-button--danger {
+.pl-btn-danger {
   background: var(--pl-card);
   border: 1px solid #f2c2c2;
-  border-radius: var(--pl-radius-ctrl);
   color: var(--pl-danger);
-  font-weight: 500;
 }
 
-.search-btns .el-button--danger:hover,
-.search-btns .el-button--danger:focus {
+.pl-btn-danger:hover {
   background: var(--pl-danger-soft);
   border-color: var(--pl-danger);
-  color: var(--pl-danger);
 }
 
-.search-btns .el-button--danger:active {
+.pl-btn-danger:active {
   background: #fbdada;
 }
 
-/* ---------------- 表格卡片 ---------------- */
+/* ---------------- 表格 ---------------- */
 /* 表格区占据搜索卡与分页之间的剩余高度；min-height:0 允许其在 flex 容器内收缩，
-   使 el-table 的 height="100%" 解析出确定像素高度，从而由表体内部滚动而非整窗滚动。 */
+   由本容器（而非整窗）纵向滚动；横向恒不滚动（table-layout:fixed + colgroup 百分比列宽）。 */
 .table-wrap {
   flex: 1 1 auto;
   min-height: 0;
   margin-bottom: 12px;
-  overflow: hidden;
-}
-
-.table.el-table {
-  width: 100%;
-  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
   border-radius: var(--pl-radius-card);
   border: 1px solid var(--pl-border);
   box-shadow: var(--pl-shadow);
-  overflow: hidden;
+  background: var(--pl-card);
+}
+
+.table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
   color: var(--pl-text);
 }
 
-.table .el-table__body,
-.table .el-table__header {
-  width: 100% !important;
+.table th,
+.table td {
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 13px;
+  border-bottom: 1px solid #f2f4f8;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.table .el-scrollbar__wrap {
-  overflow-x: hidden !important;
-}
-
-.table .el-scrollbar__bar.is-horizontal {
-  display: none;
-}
-
-.table .cell {
-  min-width: 0;
-  word-break: break-word;
-}
-
-.table.el-table::before,
-.table.el-table::after {
-  display: none;
-}
-
-.table .el-table__cell {
-  padding: 6px 0;
-}
-
-.table .el-table__header-wrapper th.el-table__cell {
+/* 表头：粘性吸顶（在 .table-wrap 内部滚动时不随表体移动）。 */
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background-color: var(--pl-header);
   color: var(--pl-text-3);
   font-weight: 600;
@@ -486,46 +579,102 @@ body {
   border-bottom: 1px solid var(--pl-border);
 }
 
-.table td.el-table__cell {
-  border-bottom: 1px solid #f2f4f8;
-  color: var(--pl-text);
-  font-size: 13px;
+.td-center {
+  text-align: center;
 }
 
-.table.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
-  background: #fbfcfe;
+.td-ellipsis {
+  word-break: break-all;
 }
 
-.table .el-table__body tr:hover > td.el-table__cell {
-  background-color: var(--pl-brand-soft) !important;
+/* 排序表头：可点击 + 上下三角，方向高亮品牌色。 */
+.table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  text-align: center;
 }
 
-/* 排序箭头对齐品牌色 */
-.table .ascending .sort-caret.ascending {
+.th-inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.caret {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 14px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.caret::before,
+.caret::after {
+  content: "";
+  position: absolute;
+  left: -4px;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+}
+
+.caret::before {
+  top: 1px;
+  border-bottom: 5px solid #c0c4cc;
+}
+
+.caret::after {
+  bottom: 1px;
+  border-top: 5px solid #c0c4cc;
+}
+
+.table th.sortable.asc .caret::before {
   border-bottom-color: var(--pl-brand);
 }
-.table .descending .sort-caret.descending {
+
+.table th.sortable.desc .caret::after {
   border-top-color: var(--pl-brand);
 }
 
-/* ---------------- 重打按钮（操作列内的 text 按钮） ---------------- */
-.el-table .el-button--text {
+/* 斑马纹 + hover */
+.table tbody tr:nth-child(even) td {
+  background: #fbfcfe;
+}
+
+.table tbody tr:hover td {
+  background-color: var(--pl-brand-soft);
+}
+
+.empty-row td {
+  text-align: center;
+  color: var(--pl-text-3);
+  padding: 28px 0;
+  font-size: 13px;
+}
+
+.empty-row:hover td {
+  background: transparent;
+}
+
+/* ---------------- 重打按钮（操作列） ---------------- */
+.reprint-btn {
   padding: 4px 12px;
+  border: none;
   border-radius: 7px;
   background: var(--pl-brand-soft);
   color: var(--pl-brand);
+  font-family: var(--pl-font);
+  font-size: 13px;
   font-weight: 500;
+  cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.el-table .el-button--text:hover,
-.el-table .el-button--text:focus {
+.reprint-btn:hover:not(:disabled) {
   background: #dbe5fd;
-  color: var(--pl-brand);
 }
 
-.el-table .el-button--text.is-disabled,
-.el-table .el-button--text.is-disabled:hover {
+.reprint-btn:disabled {
   background: transparent;
   color: #c0c4cc;
   cursor: not-allowed;
@@ -582,40 +731,125 @@ body {
 .pagination {
   flex: 0 0 auto;
   display: flex;
-  justify-content: flex-end;
-}
-
-.pagination .el-pagination {
+  align-items: center;
+  gap: 8px;
   color: var(--pl-text-2);
-  font-weight: 400;
 }
 
-.pagination .el-pagination__total,
-.pagination .el-pagination__jump {
-  color: var(--pl-text-3);
+.pl-page-size {
+  height: 30px;
+  width: 100px;
 }
 
-.pagination .el-pagination.is-background .el-pager li,
-.pagination .el-pagination.is-background .btn-prev,
-.pagination .el-pagination.is-background .btn-next {
-  background: var(--pl-card);
+.pager-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
   border: 1px solid var(--pl-border);
   border-radius: 6px;
+  background: var(--pl-card);
   color: var(--pl-text-2);
+  font-family: var(--pl-font);
+  font-size: 13px;
   font-weight: 500;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
-.pagination .el-pagination.is-background .el-pager li:hover,
-.pagination .el-pagination.is-background .btn-prev:hover,
-.pagination .el-pagination.is-background .btn-next:hover {
+.pager-btn:hover:not(:disabled) {
   border-color: var(--pl-brand);
   color: var(--pl-brand);
 }
 
-.pagination .el-pagination.is-background .el-pager li:not(.disabled).is-active {
+.pager-btn:disabled {
+  color: #c0c4cc;
+  cursor: not-allowed;
+}
+
+.pager-btn.active {
   background: var(--pl-brand-grad);
   border-color: transparent;
-  color: #ffffff;
+  color: #fff;
+}
+
+.pager-dots {
+  border-color: transparent;
+  background: transparent;
+}
+
+.pager-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--pl-text-3);
+}
+
+.pager-jump input {
+  width: 44px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  text-align: center;
+  border: none;
+  border-radius: 6px;
+  background-color: var(--pl-page);
+  box-shadow: 0 0 0 1px var(--pl-border) inset;
+  color: var(--pl-text);
+  font-family: var(--pl-font);
+  font-size: 13px;
+}
+
+.pager-jump input:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--pl-brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
+}
+
+.pager-total {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--pl-text-3);
+}
+
+/* ---------------- 清空确认浮层 ---------------- */
+.confirm-mask {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(26, 34, 51, 0.32);
+  z-index: 100;
+}
+
+.confirm-box {
+  width: 320px;
+  max-width: calc(100vw - 48px);
+  background: var(--pl-card);
+  border-radius: var(--pl-radius-card);
+  box-shadow: 0 12px 40px rgba(26, 34, 51, 0.22);
+  padding: 18px 20px 16px;
+  box-sizing: border-box;
+}
+
+.confirm-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--pl-text);
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.confirm-body {
+  font-size: 13px;
+  color: var(--pl-text-2);
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
 }
 </style>
