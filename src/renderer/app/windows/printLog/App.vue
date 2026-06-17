@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref, toRaw } from 'vue'
 import dayjs from 'dayjs'
 import { requireBridge } from '@/shared/bridge'
+import ConfirmDialog from '@/shared/ConfirmDialog.vue'
 
 // 打印记录是一个「分页日志表」（每页 ≤200 行），刻意不引入 element-plus：原生 <table> + 手写分页 +
 // 原生 <select> + <input type="datetime-local"> + 内联 SVG 即可覆盖全部交互，避免 el-table /
@@ -70,16 +71,14 @@ function fetchLogs(): void {
     params.push(start.format('YYYY-MM-DD HH:mm:ss'))
     params.push(end.format('YYYY-MM-DD HH:mm:ss'))
   }
-  const rest: Record<string, string> = {
-    clientType: searchData.clientType,
-    status: searchData.status,
+  if (searchData.clientType) {
+    condition.push('clientType = ?')
+    params.push(searchData.clientType)
   }
-  Object.keys(rest).forEach((key) => {
-    if (rest[key]) {
-      condition.push(`${key} = ?`)
-      params.push(rest[key])
-    }
-  })
+  if (searchData.status) {
+    condition.push('status = ?')
+    params.push(searchData.status)
+  }
   ipc.send('request-logs', {
     condition,
     params,
@@ -102,23 +101,18 @@ function onSort(prop: string): void {
 }
 
 function sortClass(prop: string): string {
+  // prop 守卫后，order 只可能是 onSort 设置的 ascending / descending（无第三态）。
   if (sort.value.prop !== prop) return ''
-  return sort.value.order === 'ascending' ? 'asc' : sort.value.order === 'descending' ? 'desc' : ''
+  return sort.value.order === 'ascending' ? 'asc' : 'desc'
 }
 
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-
-function rangeArr(a: number, b: number): number[] {
-  const out: number[] = []
-  for (let i = a; i <= b; i++) out.push(i)
-  return out
-}
 
 // 分页按钮序列（窗口 5、首尾常驻、远端折叠为可点省略号），复刻 el-pagination pager-count=5 的观感。
 const pageItems = computed<(number | 'l-dots' | 'r-dots')[]>(() => {
   const pc = pageCount.value
   const cur = currentPage.value
-  if (pc <= 7) return rangeArr(1, pc)
+  if (pc <= 7) return Array.from({ length: pc }, (_, i) => i + 1)
   if (cur <= 4) return [1, 2, 3, 4, 5, 'r-dots', pc]
   if (cur >= pc - 3) return [1, 'l-dots', pc - 4, pc - 3, pc - 2, pc - 1, pc]
   return [1, 'l-dots', cur - 1, cur, cur + 1, 'r-dots', pc]
@@ -129,10 +123,6 @@ function goPage(p: number): void {
   if (clamped === currentPage.value) return
   currentPage.value = clamped
   fetchLogs()
-}
-
-function jumpBy(delta: number): void {
-  goPage(currentPage.value + delta)
 }
 
 function handleSizeChange(): void {
@@ -304,7 +294,7 @@ onMounted(() => {
         class="pager-btn pager-dots"
         type="button"
         title="快速翻页"
-        @click="jumpBy(item === 'l-dots' ? -5 : 5)"
+        @click="goPage(currentPage + (item === 'l-dots' ? -5 : 5))"
       >
         …
       </button>
@@ -325,17 +315,13 @@ onMounted(() => {
     <span class="pager-total">共 {{ total }} 条</span>
   </div>
 
-  <!-- 清空确认（替代 ElMessageBox，自包含、不触发阻塞式系统弹窗） -->
-  <div v-if="clearConfirmVisible" class="confirm-mask" @click.self="clearConfirmVisible = false">
-    <div class="confirm-box">
-      <div class="confirm-title">提示</div>
-      <div class="confirm-body">确定要清空日志吗？</div>
-      <div class="confirm-actions">
-        <button class="pl-btn" type="button" @click="clearConfirmVisible = false">取消</button>
-        <button class="pl-btn pl-btn-primary" type="button" @click="confirmClear">确定</button>
-      </div>
-    </div>
-  </div>
+  <!-- 清空确认（共享浮层，替代 ElMessageBox，不触发阻塞式系统弹窗） -->
+  <ConfirmDialog
+    :visible="clearConfirmVisible"
+    message="确定要清空日志吗？"
+    @confirm="confirmClear"
+    @cancel="clearConfirmVisible = false"
+  />
 </template>
 
 <style>
@@ -809,47 +795,5 @@ body {
   margin-left: auto;
   font-size: 13px;
   color: var(--pl-text-3);
-}
-
-/* ---------------- 清空确认浮层 ---------------- */
-.confirm-mask {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(26, 34, 51, 0.32);
-  z-index: 100;
-}
-
-.confirm-box {
-  width: 320px;
-  max-width: calc(100vw - 48px);
-  background: var(--pl-card);
-  border-radius: var(--pl-radius-card);
-  box-shadow: 0 12px 40px rgba(26, 34, 51, 0.22);
-  padding: 18px 20px 16px;
-  box-sizing: border-box;
-}
-
-.confirm-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--pl-text);
-  text-align: center;
-  margin-bottom: 12px;
-}
-
-.confirm-body {
-  font-size: 13px;
-  color: var(--pl-text-2);
-  text-align: center;
-  margin-bottom: 18px;
-}
-
-.confirm-actions {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
 }
 </style>
