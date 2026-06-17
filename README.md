@@ -563,6 +563,13 @@ socket.on("error", (res) => {
 
 ## 模板+data 或 html 返回 jpeg、pdf、打印
 
+> [!WARNING]
+> **`render-jpeg` / `render-pdf` / `render-print` 已于 2026-06 标记为 deprecated（仅为向后兼容保留，不推荐新接入使用，将在未来版本经 deprecation 周期下线）。**
+>
+> 这三个事件要求 electron 客户端**重新渲染模板**，与 vue3-print 的设计原则相悖：渲染应由持有 DOM 的调用端（浏览器 / WebView / vue3-print 插件）用 canonical renderer 产出，electron 客户端只负责设备 I/O（送打印机）。
+>
+> **新接入请改用**：在调用端用 vue3-print 渲染好后，经 [`news`](#打印-html)（发送已渲染 HTML，另见「[使用 pdf 打印功能](#使用-pdf-打印功能)」）或插件 `hiprintTemplate.print2(...)`（静默打印，内部即发 `news`）下发；electron 客户端不重渲染模板。现有集成在迁移完成前仍可继续使用。
+
 > [!TIP]
 > 该功能依赖 electron-hiprint@^1.0.12-beta7 版本
 
@@ -574,18 +581,18 @@ socket.on("error", (res) => {
 
 | apiName              | 参数                        | 说明                                               |
 | -------------------- | --------------------------- | -------------------------------------------------- |
-| render-jpeg          | `template`,`data` / `html`  | 调用 electron 生成 jpeg                            |
+| render-jpeg          | `template`,`data` / `html`  | ⚠️ 已废弃，调用 electron 生成 jpeg                 |
 | render-jpeg-success  | `templateId`,`buffer`,`msg` | 成功回调，返回 templateId 和生成的 jpeg 二进制数据 |
 | render-jpeg-error    | `templateId`,`msg`          | 错误回调，返回 templateId 和错误信息               |
-| render-pdf           | `template`,`data` / `html`  | 调用 electron 生成 pdf                             |
+| render-pdf           | `template`,`data` / `html`  | ⚠️ 已废弃，调用 electron 生成 pdf                  |
 | render-pdf-success   | `templateId`,`buffer`,`msg` | 成功回调，返回 templateId 和生成的 pdf 二进制数据  |
 | render-pdf-error     | `templateId`,`msg`          | 错误回调，返回 templateId 和错误信息               |
-| render-print         | `template`,`data` / `html`  | 调用 electron 打印                                 |
+| render-print         | `template`,`data` / `html`  | ⚠️ 已废弃，调用 electron 打印                      |
 | render-print-success | `templateId`,`msg`          | 成功回调，返回 templateId 和打印成功信息           |
 | render-print-error   | `templateId`,`msg`          | 错误回调，返回 templateId 和错误信息               |
 
 <details>
-    <summary>vue3-print</summary>
+    <summary>vue3-print（⚠️ 已废弃示例，新接入请改用 news / print2）</summary>
 
 ```js
 hiprint.hiwebSocket.socket.emit("render-jpeg", {
@@ -630,7 +637,7 @@ socket.on("render-print-error", (data) => {
 </details>
 
 <details open>
-    <summary>node.js demo</summary>
+    <summary>node.js demo（⚠️ render-* 已废弃示例）</summary>
 
 ```node
 const io = require("socket.io-client");
@@ -705,10 +712,12 @@ socket.on("disconnect", () => {
      pageSize,
      rePrintAble: false,
    });
+   // ⚠️ render-print 已废弃，建议优先用上方 news 或下方 print2
    socket.emit("render-print", { template, data, rePrintAble: false });
 
-   // vue3-print
+   // vue3-print（推荐）
    hiprintTemplate.print2(printData, { printer, title, rePrintAble: false });
+   // ⚠️ render-print 已废弃
    hiprint.hiwebSocket.socket.emit("render-print", {
      template,
      data,
