@@ -82,6 +82,7 @@ interface HiprintSoftwareLogBridge {
   listDates(): Promise<string[]>
   read(date: string): Promise<HiprintSoftwareLogPayload>
   openFolder(): void
+  clear(): Promise<boolean>
 }
 
 // render 窗口主进程任务数据（png/pdf/print）。字段动态，保留索引签名以支持 {...data} 透传。

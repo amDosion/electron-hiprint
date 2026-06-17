@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld("hiprintSoftwareLog", {
   listDates: () => ipcRenderer.invoke("software-log:list-dates"),
   read: (date) => ipcRenderer.invoke("software-log:read", date),
   openFolder: () => ipcRenderer.send("software-log:open-folder"),
+  clear: () => ipcRenderer.invoke("software-log:clear"),
 });

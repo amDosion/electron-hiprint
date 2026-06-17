@@ -1,10 +1,5 @@
 "use strict";
-const {
-  app,
-  BrowserWindow,
-  ipcMain,
-  shell,
-} = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const path = require("path");
 const { getAssetUrl } = require("./asset-url");
 const { attachLoadingView } = require("./loading-view");
@@ -79,7 +74,8 @@ function attachSoftwareLogLoadDiagnostics(win, openedAt) {
   });
   win.webContents.once("did-fail-load", (_event, code, description, url) => {
     console.error(
-      `软件日志窗口：did-fail-load ${elapsed()}ms ${code} ${description || ""} ${url || ""}`,
+      `软件日志窗口：did-fail-load ${elapsed()}ms ${code} ${description ||
+        ""} ${url || ""}`,
     );
   });
   win.webContents.once("render-process-gone", (_event, details) => {
@@ -99,6 +95,7 @@ function initSoftwareLogEvent() {
   ipcMain.handle("software-log:read", (event, date) =>
     softwareLogStore.readLog(date),
   );
+  ipcMain.handle("software-log:clear", () => softwareLogStore.clearAll());
   ipcMain.on("software-log:open-folder", openFolder);
 }
 
@@ -114,6 +111,7 @@ function removeSoftwareLogEvent() {
 function removeSoftwareLogIpcHandlers() {
   ipcMain.removeHandler("software-log:list-dates");
   ipcMain.removeHandler("software-log:read");
+  ipcMain.removeHandler("software-log:clear");
   ipcMain.removeListener("software-log:open-folder", openFolder);
 }
 

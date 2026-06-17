@@ -12,8 +12,29 @@ function read(relPath) {
   return fs.readFileSync(path.join(REPO_ROOT, relPath), "utf8");
 }
 
+// 去 vite-plugin-singlefile 后渲染层改为分块构建：窗口 HTML 只剩 <script src> 外链，
+// 应用代码落在 assets/assets/<窗口>-*.{js,css}。故「构建产物」契约须读 HTML + 其外链 chunk
+// 的合并文本，否则断言会落在已成空壳的 HTML 上而误判。
+function readBuiltBundle(htmlRel, windowPrefix) {
+  let text = read(htmlRel);
+  const chunkDir = path.join(REPO_ROOT, "assets", "assets");
+  if (fs.existsSync(chunkDir)) {
+    for (const name of fs.readdirSync(chunkDir)) {
+      if (
+        name.startsWith(windowPrefix + "-") &&
+        (name.endsWith(".js") || name.endsWith(".css"))
+      ) {
+        text += "\n" + fs.readFileSync(path.join(chunkDir, name), "utf8");
+      }
+    }
+  }
+  return text;
+}
+
 function contains(text, pattern) {
-  return pattern instanceof RegExp ? pattern.test(text) : text.includes(pattern);
+  return pattern instanceof RegExp
+    ? pattern.test(text)
+    : text.includes(pattern);
 }
 
 const files = {
@@ -25,11 +46,13 @@ const files = {
   database: read("tools/database.js"),
   softwareLogVue: read("src/renderer/app/windows/softwareLog/App.vue"),
   settingsVue: read("src/renderer/app/windows/set/App.vue"),
-  softwareLogSmoke: read("tools/repro/runtime/softwarelog-window-render-smoke.js"),
+  softwareLogSmoke: read(
+    "tools/repro/runtime/softwarelog-window-render-smoke.js",
+  ),
   loadingSmoke: read("tools/repro/runtime/loading-view-lifecycle-check.js"),
   setSmoke: read("tools/repro/runtime/set-window-render-smoke.js"),
-  assetsSoftwareLog: read("assets/softwareLog.html"),
-  assetsSet: read("assets/set.html"),
+  assetsSoftwareLog: readBuiltBundle("assets/softwareLog.html", "softwareLog"),
+  assetsSet: readBuiltBundle("assets/set.html", "set"),
 };
 
 const checks = [];
@@ -56,7 +79,7 @@ expect(
 expectAbsent("main-has-no-file-log-path", "main", [
   "transports.file.resolvePathFn",
   "YYYY-MM-DD.log",
-  "store.get(\"logPath\")",
+  'store.get("logPath")',
   "store.get('logPath')",
 ]);
 
@@ -86,10 +109,11 @@ expect(
   "software-log-store-exposes-database-path",
   /getDatabasePath/.test(files.softwareLogStore),
 );
-expectAbsent("software-log-store-has-no-text-fallback-comment", "softwareLogStore", [
-  "文本 transport",
-  "text transport",
-]);
+expectAbsent(
+  "software-log-store-has-no-text-fallback-comment",
+  "softwareLogStore",
+  ["文本 transport", "text transport"],
+);
 
 expect(
   "software-log-window-opens-database-directory",
@@ -100,7 +124,7 @@ expect(
 expectAbsent("software-log-window-has-no-log-path", "softwareLogMain", [
   "logPath",
   "store.get",
-  "app.getPath(\"logs\")",
+  'app.getPath("logs")',
   "app.getPath('logs')",
 ]);
 
@@ -132,7 +156,7 @@ expectAbsent("settings-ui-no-log-path-field", "settingsVue", [
 
 expectAbsent("runtime-smokes-no-log-path-fixtures", "loadingSmoke", [
   "logPath",
-  "String(date) + \".log\"",
+  'String(date) + ".log"',
 ]);
 expectAbsent("settings-smoke-no-log-path-fixture", "setSmoke", ["logPath"]);
 expect(
@@ -142,14 +166,14 @@ expect(
     files.softwareLogSmoke.includes("file-log-footer-present"),
 );
 expectAbsent("software-log-smoke-no-log-file-fixture", "softwareLogSmoke", [
-  "String(date) + \".log\"",
+  'String(date) + ".log"',
 ]);
 
-expectAbsent("built-software-log-asset-no-file-source-wording", "assetsSoftwareLog", [
-  "…/logs/",
-  "暂无日志文件",
-  "打开文件夹",
-]);
+expectAbsent(
+  "built-software-log-asset-no-file-source-wording",
+  "assetsSoftwareLog",
+  ["…/logs/", "暂无日志文件", "打开文件夹"],
+);
 expect(
   "built-software-log-asset-has-sqlite-source",
   files.assetsSoftwareLog.includes("sqlite/software_logs"),

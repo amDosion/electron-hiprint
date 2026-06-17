@@ -127,4 +127,23 @@ function readLog(date) {
   });
 }
 
-module.exports = { appendFromTransport, listDates, readLog, getDatabasePath };
+/**
+ * 清空全部软件日志（DELETE FROM software_logs）。
+ * 固定语句、无用户输入，与「打印记录·清空」一致；失败时静默并以 false 反馈。
+ * @return {Promise<boolean>} 是否成功
+ */
+function clearAll() {
+  return new Promise((resolve) => {
+    db.run("DELETE FROM software_logs", [], (err) => {
+      resolve(!err);
+    });
+  });
+}
+
+module.exports = {
+  appendFromTransport,
+  listDates,
+  readLog,
+  getDatabasePath,
+  clearAll,
+};

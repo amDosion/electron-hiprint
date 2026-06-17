@@ -139,6 +139,32 @@ app.whenReady().then(async () => {
         result.steps.push({ step: "index-missing", name, got: indexes });
       }
     }
+
+    // clearAll：清空后日期列表为空、当日读取 0 行（软件日志窗口「清空」功能的删除路径回归）
+    const cleared = await store.clearAll();
+    const datesAfter = await store.listDates();
+    const logAfter = await store.readLog(today);
+    result.clearReturn = cleared;
+    result.datesAfter = datesAfter;
+    result.lineCountAfter = logAfter.lines.length;
+    if (cleared !== true) {
+      result.failed = true;
+      result.steps.push({ step: "clear-return-not-true", got: cleared });
+    }
+    if (datesAfter.length !== 0) {
+      result.failed = true;
+      result.steps.push({
+        step: "dates-not-empty-after-clear",
+        got: datesAfter,
+      });
+    }
+    if (logAfter.lines.length !== 0) {
+      result.failed = true;
+      result.steps.push({
+        step: "lines-not-empty-after-clear",
+        got: logAfter.lines.length,
+      });
+    }
   } catch (err) {
     result.failed = true;
     result.error = String((err && err.stack) || err);

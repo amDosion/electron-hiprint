@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { requireBridge } from '@/shared/bridge'
+import ConfirmDialog from '@/shared/ConfirmDialog.vue'
 
 // 软件日志是一个轻量日志查看器：日期下拉 + 级别下拉 + 搜索框 + 两个图标按钮。
 // 这些都是原生控件等价物，故本窗口刻意不引入 element-plus —— 否则仅 el-select 一个组件
@@ -26,6 +27,7 @@ const lines = ref<HiprintSoftwareLogLine[]>([])
 const sourceDay = ref('')
 const truncated = ref(false)
 const consoleEl = ref<HTMLElement | null>(null)
+const clearConfirmVisible = ref(false)
 
 // HTML 转义，避免日志正文中的标签被当作 DOM 注入（v-html 渲染前必须转义）
 function escapeHtml(str: string): string {
@@ -114,10 +116,6 @@ async function loadDate(date: string): Promise<void> {
   }
 }
 
-function handleDateChange(date: string): void {
-  void loadDate(date)
-}
-
 async function refresh(): Promise<void> {
   // 重新列出日期，保留当前选中（若仍存在），并重新读取
   try {
@@ -136,6 +134,23 @@ async function refresh(): Promise<void> {
 
 function openFolder(): void {
   ipc.openFolder()
+}
+
+function clearLogs(): void {
+  clearConfirmVisible.value = true
+}
+
+// 清空全部软件日志（DELETE FROM software_logs），与「打印记录·清空」语义一致。
+// 清空后重新列出日期并刷新视图（日期列表多半为空 → 视图回到「暂无日志记录」）。
+async function confirmClear(): Promise<void> {
+  clearConfirmVisible.value = false
+  try {
+    await ipc.clear()
+  } catch {
+    // 清空失败静默忽略：不阻断 UI，下次刷新会反映真实状态。
+  }
+  currentDate.value = ''
+  await refresh()
 }
 
 onMounted(async () => {
@@ -159,11 +174,7 @@ onMounted(async () => {
       软件日志
     </span>
 
-    <select
-      class="sl-ctrl sl-date"
-      v-model="currentDate"
-      @change="handleDateChange(($event.target as HTMLSelectElement).value)"
-    >
+    <select class="sl-ctrl sl-date" v-model="currentDate" @change="loadDate(currentDate)">
       <option v-if="!dates.length" value="" disabled>暂无日志</option>
       <option v-for="d in dates" :key="d" :value="d">{{ d }}</option>
     </select>
@@ -207,7 +218,22 @@ onMounted(async () => {
         />
       </svg>
     </button>
+    <button class="sl-icon-btn sl-danger" type="button" title="清空软件日志" @click="clearLogs">
+      <svg class="sl-ic" viewBox="0 0 1024 1024" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M160 256H96a32 32 0 0 1 0-64h256V95.936a32 32 0 0 1 32-32h256a32 32 0 0 1 32 32V192h256a32 32 0 1 1 0 64h-64v608a32 32 0 0 1-32 32H224a32 32 0 0 1-32-32V256zm448-64v-64H416v64h192zM224 896h576V256H224v640zm192-128a32 32 0 0 1-32-32V416a32 32 0 0 1 64 0v320a32 32 0 0 1-32 32zm192 0a32 32 0 0 1-32-32V416a32 32 0 0 1 64 0v320a32 32 0 0 1-32 32z"
+        />
+      </svg>
+    </button>
   </div>
+
+  <ConfirmDialog
+    :visible="clearConfirmVisible"
+    message="确定要清空全部软件日志吗？"
+    @confirm="confirmClear"
+    @cancel="clearConfirmVisible = false"
+  />
 
   <div class="console-wrap">
     <div class="console" ref="consoleEl">
@@ -471,6 +497,14 @@ body {
   border-color: var(--sl-brand);
   color: var(--sl-brand);
   background: var(--sl-brand-soft);
+}
+
+/* 清空按钮：危险动作，hover 走红色语义。 */
+.sl-icon-btn.sl-danger:hover,
+.sl-icon-btn.sl-danger:focus {
+  border-color: var(--sl-error);
+  color: var(--sl-error);
+  background: var(--sl-error-soft);
 }
 
 /* 内联 SVG 图标尺寸（顶栏图标按钮 + 搜索框前缀图标） */

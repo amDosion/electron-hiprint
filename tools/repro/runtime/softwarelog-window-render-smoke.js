@@ -3,7 +3,7 @@
 // 软件日志窗口 SFC 渲染冒烟（需真实 Electron）。
 // 经 app:// 加载已构建的 assets/softwareLog.html，附真实 src/preload/softwareLog.js（暴露 hiprintSoftwareLog 桥）。
 // 断言：加载成功、origin 为 app://bundle、桥注入、Vue 根挂载、顶栏品牌/日期选择/级别选择/搜索框、
-//       console 渲染出日志行与级别标签、刷新/打开数据库目录按钮、sqlite 页脚来源、
+//       console 渲染出日志行与级别标签、刷新/打开数据库目录/清空 三个图标按钮、sqlite 页脚来源、
 //       长异常日志不会撑出横向滚动条、底栏可见、无脚本错误。
 // preload 用 ipcRenderer.invoke（异步）取日期/读日志，故 harness 用 ipcMain.handle 应答以驱动真实挂载。
 // 运行：npx electron tools/repro/runtime/softwarelog-window-render-smoke.js
@@ -161,7 +161,7 @@ app.whenReady().then(async () => {
       result.failed = true;
       result.steps.push({ step: "search-input-missing" });
     }
-    if (probe.iconBtnCount !== 2) {
+    if (probe.iconBtnCount !== 3) {
       result.failed = true;
       result.steps.push({
         step: "icon-buttons-wrong",
@@ -170,11 +170,12 @@ app.whenReady().then(async () => {
     }
     if (
       !Array.isArray(probe.iconTitles) ||
-      !probe.iconTitles.includes("打开数据库目录")
+      !probe.iconTitles.includes("打开数据库目录") ||
+      !probe.iconTitles.includes("清空软件日志")
     ) {
       result.failed = true;
       result.steps.push({
-        step: "database-folder-button-missing",
+        step: "icon-button-titles-missing",
         got: probe.iconTitles,
       });
     }
