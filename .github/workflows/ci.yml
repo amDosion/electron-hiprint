@@ -42,6 +42,7 @@ jobs:
           node --check tools/database.js
           node --check tools/utils.js
           node --check build/write-build-info.js
+          node --check tools/repro/runtime/run-electron-script.js
           node --check tools/repro/runtime/packaged-main-startup-log-check.js
           node --check tools/repro/runtime/software-log-sqlite-contract-check.js
           node --check tools/repro/updater/github-online-upgrade-check.js

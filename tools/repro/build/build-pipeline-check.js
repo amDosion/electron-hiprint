@@ -136,13 +136,16 @@ function main() {
     "BUILD-WORKFLOWS-UPGRADE-SMOKE-MISSING",
     exists("tools/repro/updater/installed-upgrade-smoke.ps1") &&
       exists("tools/repro/runtime/packaged-main-startup-log-check.js") &&
+      exists("tools/repro/runtime/run-electron-script.js") &&
       installersWorkflow.includes("installed-upgrade-smoke.ps1") &&
       installersWorkflow.includes("Smoke online upgrade restart") &&
+      installersWorkflow.includes("run-electron-script.js") &&
       installersWorkflow.includes("packaged-main-startup-log-check.js") &&
       installersWorkflow.includes("matrix.artifact == 'win_x64'") &&
       installersWorkflow.includes("GITHUB_TOKEN") &&
       releaseWorkflow.includes("installed-upgrade-smoke.ps1") &&
       releaseWorkflow.includes("验证在线升级安装后可重启") &&
+      releaseWorkflow.includes("run-electron-script.js") &&
       releaseWorkflow.includes("packaged-main-startup-log-check.js") &&
       releaseWorkflow.includes("matrix.artifact == 'win_x64'") &&
       releaseWorkflow.includes("GITHUB_TOKEN"),

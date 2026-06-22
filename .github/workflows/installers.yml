@@ -96,7 +96,7 @@ jobs:
 
       - name: Smoke packaged main startup log
         if: matrix.artifact == 'win_x64'
-        run: npx electron tools/repro/runtime/packaged-main-startup-log-check.js
+        run: node tools/repro/runtime/run-electron-script.js tools/repro/runtime/packaged-main-startup-log-check.js
 
       - name: Smoke online upgrade restart
         if: matrix.artifact == 'win_x64'

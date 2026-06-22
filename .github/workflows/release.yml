@@ -113,7 +113,7 @@ jobs:
 
       - name: 验证 packaged 主进程启动日志落库
         if: matrix.artifact == 'win_x64'
-        run: npx electron tools/repro/runtime/packaged-main-startup-log-check.js
+        run: node tools/repro/runtime/run-electron-script.js tools/repro/runtime/packaged-main-startup-log-check.js
 
       - name: 验证在线升级安装后可重启
         if: matrix.artifact == 'win_x64'

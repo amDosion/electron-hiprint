@@ -5,7 +5,7 @@
 // electron-log, creates the packaged app window stack, and then emits the
 // startup marker that installed-upgrade-smoke.ps1 waits for in SQLite.
 //
-// Run: npx electron tools/repro/runtime/packaged-main-startup-log-check.js
+// Run: node tools/repro/runtime/run-electron-script.js tools/repro/runtime/packaged-main-startup-log-check.js
 // Contract: stdout prints MAIN_STARTUP_LOG_RESULT <json>; failed=false exits 0.
 
 const fs = require("fs");
