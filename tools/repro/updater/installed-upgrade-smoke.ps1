@@ -94,12 +94,21 @@ function Normalize-Version([string]$Value) {
   return ""
 }
 
+function Convert-CommandOutputToText {
+  param([AllowNull()][object]$Output)
+
+  if ($null -eq $Output) { return "" }
+  return (($Output | Out-String).Trim())
+}
+
 function Read-PackageVersion {
   $script = "console.log(require('./package.json').version)"
   Push-Location $RepoRoot
   try {
-    $version = (& node -e $script).Trim()
-    if ($LASTEXITCODE -ne 0 -or -not $version) {
+    $output = & node -e $script
+    $exitCode = $LASTEXITCODE
+    $version = Convert-CommandOutputToText $output
+    if ($exitCode -ne 0 -or -not $version) {
       throw "Unable to read package.json version."
     }
     return $version
@@ -115,8 +124,10 @@ function Read-AsarVersion([string]$AppAsarPath) {
   $script = "const asar=require('@electron/asar'); const pkg=JSON.parse(asar.extractFile(process.argv[1],'package.json').toString()); console.log(pkg.version)"
   Push-Location $RepoRoot
   try {
-    $version = (& node -e $script $AppAsarPath).Trim()
-    if ($LASTEXITCODE -ne 0 -or -not $version) {
+    $output = & node -e $script $AppAsarPath
+    $exitCode = $LASTEXITCODE
+    $version = Convert-CommandOutputToText $output
+    if ($exitCode -ne 0 -or -not $version) {
       throw "Unable to read app.asar version from $AppAsarPath"
     }
     return $version
@@ -240,8 +251,10 @@ db.get("SELECT msg FROM software_logs WHERE msg LIKE '%Electron-hiprint 启动%'
 "@
   Push-Location $RepoRoot
   try {
-    $log = (& node -e $script $DbPath).Trim()
-    if ($LASTEXITCODE -eq 0 -and $log) {
+    $output = & node -e $script $DbPath
+    $exitCode = $LASTEXITCODE
+    $log = Convert-CommandOutputToText $output
+    if ($exitCode -eq 0 -and $log) {
       return $log
     }
     return ""

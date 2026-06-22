@@ -24,6 +24,9 @@ const deferredInstallerPath = path.join(
   "src/deferred-installer-launcher.js",
 );
 const deferredInstallerText = readText("src/deferred-installer-launcher.js");
+const installedUpgradeSmokeText = readText(
+  "tools/repro/updater/installed-upgrade-smoke.ps1",
+);
 const risks = [];
 
 function expect(condition, id, severity, detail) {
@@ -119,6 +122,19 @@ expect(
   "UPDATER-DEFERRED-INSTALLER-NOT-OBSERVABLE",
   "high",
   "Deferred installer readiness, exit codes, and failures should be logged to a temp launcher log instead of being swallowed by a detached hidden helper.",
+);
+
+expect(
+  /function Convert-CommandOutputToText/.test(installedUpgradeSmokeText) &&
+    /Read-StartupLog[\s\S]*\$output\s*=\s*&\s+node\s+-e\s+\$script\s+\$DbPath[\s\S]*\$exitCode\s*=\s*\$LASTEXITCODE[\s\S]*Convert-CommandOutputToText\s+\$output/.test(
+      installedUpgradeSmokeText,
+    ) &&
+    !/\(\s*&\s+node\s+-e\s+\$script\s+\$DbPath\s*\)\.Trim\(\)/.test(
+      installedUpgradeSmokeText,
+    ),
+  "UPDATER-INSTALLED-SMOKE-EMPTY-STARTUP-LOG-BROKEN",
+  "high",
+  "The installed upgrade smoke should treat an empty SQLite startup-log query as a retryable wait state, not as a PowerShell null .Trim() failure.",
 );
 
 expect(
