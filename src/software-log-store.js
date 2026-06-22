@@ -25,6 +25,22 @@ const KNOWN_LEVELS = new Set([
   "silly",
 ]);
 
+const schemaReady =
+  typeof db.whenReady === "function" ? db.whenReady() : Promise.resolve();
+let reportedWriteError = false;
+
+function reportWriteError(error) {
+  if (!error || reportedWriteError) return;
+  reportedWriteError = true;
+  try {
+    process.stderr.write(
+      `software-log sqlite write failed: ${error.message || error}\n`,
+    );
+  } catch {
+    // stderr 失败时不能再走 console，否则会递归进入 electron-log transport。
+  }
+}
+
 /**
  * 将单个日志参数格式化为可读字符串（对齐 console.log(a, b, c) 的多参数语义）。
  * @param {unknown} part
@@ -61,15 +77,18 @@ function appendFromTransport(message) {
     const day = dayjs(when).format("YYYY-MM-DD");
     const ts = dayjs(when).format("YYYY-MM-DD HH:mm:ss.SSS");
 
-    db.run(
-      "INSERT INTO software_logs (day, ts, level, msg) VALUES (?, ?, ?, ?)",
-      [day, ts, level, text],
+    schemaReady.then(
       () => {
-        // 写入失败静默忽略：此处禁止 console（递归），也不能抛出破坏业务调用链。
+        db.run(
+          "INSERT INTO software_logs (day, ts, level, msg) VALUES (?, ?, ?, ?)",
+          [day, ts, level, text],
+          reportWriteError,
+        );
       },
+      reportWriteError,
     );
-  } catch {
-    // 同上：写入路径任何异常一律静默。
+  } catch (error) {
+    reportWriteError(error);
   }
 }
 

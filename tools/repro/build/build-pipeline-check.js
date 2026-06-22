@@ -135,15 +135,18 @@ function main() {
     risks,
     "BUILD-WORKFLOWS-UPGRADE-SMOKE-MISSING",
     exists("tools/repro/updater/installed-upgrade-smoke.ps1") &&
+      exists("tools/repro/runtime/packaged-main-startup-log-check.js") &&
       installersWorkflow.includes("installed-upgrade-smoke.ps1") &&
       installersWorkflow.includes("Smoke online upgrade restart") &&
+      installersWorkflow.includes("packaged-main-startup-log-check.js") &&
       installersWorkflow.includes("matrix.artifact == 'win_x64'") &&
       installersWorkflow.includes("GITHUB_TOKEN") &&
       releaseWorkflow.includes("installed-upgrade-smoke.ps1") &&
       releaseWorkflow.includes("验证在线升级安装后可重启") &&
+      releaseWorkflow.includes("packaged-main-startup-log-check.js") &&
       releaseWorkflow.includes("matrix.artifact == 'win_x64'") &&
       releaseWorkflow.includes("GITHUB_TOKEN"),
-    "Windows x64 build workflows should install a previous release, upgrade with the built installer, and verify restart via the installed-upgrade smoke before publishing artifacts.",
+    "Windows x64 build workflows should verify packaged startup SQLite logging, install a previous release, upgrade with the built installer, and verify restart via the installed-upgrade smoke before publishing artifacts.",
   );
 
   record(

@@ -16,6 +16,7 @@ const { app } = electron;
 const dayjs = require("dayjs");
 const sqlite3 = require("sqlite3").verbose();
 
+const rawConsoleLog = console.log.bind(console);
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hiprint-swlog-"));
 Object.defineProperty(app, "isPackaged", { value: true, configurable: true });
 app.setPath("userData", tmpDir);
@@ -31,7 +32,7 @@ function cleanupAndExit(result) {
 
 function finish(result) {
   result.failed = Boolean(result.failed);
-  console.log("STORE_RESULT " + JSON.stringify(result));
+  rawConsoleLog("STORE_RESULT " + JSON.stringify(result));
   try {
     const databaseModulePath = path.join(__dirname, "../../../tools/database");
     const cached = require.cache[require.resolve(databaseModulePath)];
@@ -163,6 +164,29 @@ app.whenReady().then(async () => {
       result.steps.push({
         step: "lines-not-empty-after-clear",
         got: logAfter.lines.length,
+      });
+    }
+
+    const electronLog = require("electron-log");
+    electronLog.transports.file.level = false;
+    electronLog.transports.sqlite = store.appendFromTransport;
+    Object.assign(console, electronLog.functions);
+    console.log("==> Electron-hiprint 启动 <==");
+
+    await new Promise((r) => setTimeout(r, 600));
+
+    const transportLog = await store.readLog(today);
+    result.transportLineCount = transportLog.lines.length;
+    result.transportMessages = transportLog.lines.map((line) => line.msg);
+    if (
+      !transportLog.lines.some((line) =>
+        /Electron-hiprint 启动/.test(line.msg),
+      )
+    ) {
+      result.failed = true;
+      result.steps.push({
+        step: "console-transport-startup-log-missing",
+        got: transportLog.lines,
       });
     }
   } catch (err) {

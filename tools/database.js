@@ -29,6 +29,35 @@ const db = new sqlite3.Database(dbPath, (err) => {
   }
 });
 
+let schemaError = null;
+let resolveSchemaReady;
+let rejectSchemaReady;
+const schemaReady = new Promise((resolve, reject) => {
+  resolveSchemaReady = resolve;
+  rejectSchemaReady = reject;
+});
+
+function isDuplicateColumnError(err) {
+  return err && err.message && err.message.includes("duplicate column");
+}
+
+function recordSchemaError(err, options = {}) {
+  if (!err) return;
+  if (options.ignoreDuplicateColumn && isDuplicateColumnError(err)) return;
+  if (!schemaError) {
+    schemaError = err;
+  }
+}
+
+function finishSchemaReady(err) {
+  recordSchemaError(err);
+  if (schemaError) {
+    rejectSchemaReady(schemaError);
+    return;
+  }
+  resolveSchemaReady();
+}
+
 // 创建打印日志记录表
 db.serialize(() => {
   db.run(`
@@ -44,7 +73,7 @@ db.serialize(() => {
       status TEXT,
       errorMessage TEXT
     )
-  `);
+  `, recordSchemaError);
 
   // 添加新的可选字段 rePrintAble，默认值为 1
   db.run(
@@ -55,6 +84,7 @@ db.serialize(() => {
       if (err && !err.message.includes("duplicate column")) {
         console.error("添加新字段时出错:", err);
       }
+      recordSchemaError(err, { ignoreDuplicateColumn: true });
     },
   );
 
@@ -67,25 +97,30 @@ db.serialize(() => {
       level TEXT,
       msg TEXT
     )
-  `);
+  `, recordSchemaError);
 
   // 按天查询 / DISTINCT 列日期用索引（对齐软件日志窗口的日期选择）
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_software_logs_day ON software_logs(day)`,
+    recordSchemaError,
   );
   // 软件日志窗口按 day 取末尾日志：WHERE day = ? ORDER BY id DESC LIMIT ?
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_software_logs_day_id ON software_logs(day, id DESC)`,
+    recordSchemaError,
   );
   // 打印记录默认按最近记录展示，并被打印状态查询复用。
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_print_logs_timestamp_id ON print_logs(timestamp DESC, id DESC)`,
+    recordSchemaError,
   );
   db.run(
     `CREATE INDEX IF NOT EXISTS idx_print_logs_template_timestamp_id ON print_logs(templateId, timestamp DESC, id DESC)`,
+    finishSchemaReady,
   );
 });
 
 db.getDatabasePath = () => dbPath;
+db.whenReady = () => schemaReady;
 
 module.exports = db;

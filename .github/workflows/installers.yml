@@ -94,6 +94,10 @@ jobs:
             if (-not ($files | Where-Object { $_.Name.EndsWith(".deb") })) { throw "Missing Linux deb for $artifact" }
           }
 
+      - name: Smoke packaged main startup log
+        if: matrix.artifact == 'win_x64'
+        run: npx electron tools/repro/runtime/packaged-main-startup-log-check.js
+
       - name: Smoke online upgrade restart
         if: matrix.artifact == 'win_x64'
         shell: pwsh

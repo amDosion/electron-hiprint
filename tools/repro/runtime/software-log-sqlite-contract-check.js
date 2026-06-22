@@ -49,6 +49,9 @@ const files = {
   softwareLogSmoke: read(
     "tools/repro/runtime/softwarelog-window-render-smoke.js",
   ),
+  packagedMainStartupSmoke: read(
+    "tools/repro/runtime/packaged-main-startup-log-check.js",
+  ),
   loadingSmoke: read("tools/repro/runtime/loading-view-lifecycle-check.js"),
   setSmoke: read("tools/repro/runtime/set-window-render-smoke.js"),
   assetsSoftwareLog: readBuiltBundle("assets/softwareLog.html", "softwareLog"),
@@ -95,6 +98,12 @@ expect(
   /getDatabasePath\s*=\s*\(\)\s*=>\s*dbPath/.test(files.database),
 );
 expect(
+  "database-exposes-schema-ready",
+  /const\s+schemaReady\s*=\s*new\s+Promise/.test(files.database) &&
+    /whenReady\s*=\s*\(\)\s*=>\s*schemaReady/.test(files.database) &&
+    /finishSchemaReady/.test(files.database),
+);
+expect(
   "database-indexes-software-tail-read",
   /idx_software_logs_day_id[\s\S]*ON software_logs\(day, id DESC\)/.test(
     files.database,
@@ -115,6 +124,19 @@ expect(
 expect(
   "software-log-store-exposes-database-path",
   /getDatabasePath/.test(files.softwareLogStore),
+);
+expect(
+  "software-log-store-waits-for-schema-ready-before-insert",
+  /const\s+schemaReady\s*=/.test(files.softwareLogStore) &&
+    /db\.whenReady/.test(files.softwareLogStore) &&
+    /schemaReady\.then\([\s\S]*INSERT INTO software_logs/.test(
+      files.softwareLogStore,
+    ),
+);
+expect(
+  "software-log-store-reports-write-errors-without-console-recursion",
+  /process\.stderr\.write/.test(files.softwareLogStore) &&
+    /reportedWriteError/.test(files.softwareLogStore),
 );
 expectAbsent(
   "software-log-store-has-no-text-fallback-comment",
@@ -175,6 +197,13 @@ expect(
 expectAbsent("software-log-smoke-no-log-file-fixture", "softwareLogSmoke", [
   'String(date) + ".log"',
 ]);
+expect(
+  "packaged-main-startup-smoke-loads-real-main-and-asserts-sqlite-marker",
+  files.packagedMainStartupSmoke.includes('require(path.join(REPO_ROOT, "main.js"))') &&
+    files.packagedMainStartupSmoke.includes("HIPRINT_USER_DATA_DIR") &&
+    files.packagedMainStartupSmoke.includes("Electron-hiprint 启动") &&
+    files.packagedMainStartupSmoke.includes("MAIN_STARTUP_LOG_RESULT"),
+);
 
 expectAbsent(
   "built-software-log-asset-no-file-source-wording",
