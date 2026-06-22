@@ -107,6 +107,8 @@ expect(
     /FAILED:/.test(deferredInstallerText) &&
     /-PassThru/.test(deferredInstallerText) &&
     /-ErrorAction Stop/.test(deferredInstallerText) &&
+    /WaitForExit/.test(deferredInstallerText) &&
+    /installer exit code/.test(deferredInstallerText) &&
     /waitForLauncherReady/.test(deferredInstallerText) &&
     /buildLauncherBootstrapScript/.test(deferredInstallerText) &&
     /bootstrap started helper pid/.test(deferredInstallerText) &&
@@ -116,7 +118,7 @@ expect(
     !/detached:\s*true/.test(deferredInstallerText),
   "UPDATER-DEFERRED-INSTALLER-NOT-OBSERVABLE",
   "high",
-  "Deferred installer readiness and failures should be logged to a temp launcher log instead of being swallowed by a detached hidden helper.",
+  "Deferred installer readiness, exit codes, and failures should be logged to a temp launcher log instead of being swallowed by a detached hidden helper.",
 );
 
 expect(
@@ -235,6 +237,8 @@ if (fs.existsSync(deferredInstallerPath)) {
       script.includes("FAILED:") &&
       script.includes("-PassThru") &&
       script.includes("-ErrorAction Stop") &&
+      script.includes("WaitForExit") &&
+      script.includes("installer exit code") &&
       !deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("/S") &&
       deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes(
         "/KEEP_APP_DATA",
@@ -242,7 +246,7 @@ if (fs.existsSync(deferredInstallerPath)) {
       !deferredInstaller.WINDOWS_UPGRADE_INSTALLER_ARGS.includes("--updated"),
     "UPDATER-DEFERRED-INSTALLER-ARGS-BROKEN",
     "high",
-    "The installer launch script should quote paths safely, log helper failures, and use visible app-data-preserving arguments.",
+    "The installer launch script should quote paths safely, log helper failures and installer exit codes, and use visible app-data-preserving arguments.",
   );
 
   expect(

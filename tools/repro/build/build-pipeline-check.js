@@ -31,6 +31,7 @@ function main() {
   const runtimeUtils = read("tools/utils.js");
   const installersWorkflow = read(".github/workflows/installers.yml");
   const releaseWorkflow = read(".github/workflows/release.yml");
+  const ciWorkflow = read(".github/workflows/ci.yml");
   const autoTagWorkflow = read(".github/workflows/plugin-bump.yml");
 
   const directBuilderScripts = Object.entries(scripts).filter(
@@ -132,6 +133,21 @@ function main() {
 
   record(
     risks,
+    "BUILD-WORKFLOWS-UPGRADE-SMOKE-MISSING",
+    exists("tools/repro/updater/installed-upgrade-smoke.ps1") &&
+      installersWorkflow.includes("installed-upgrade-smoke.ps1") &&
+      installersWorkflow.includes("Smoke online upgrade restart") &&
+      installersWorkflow.includes("matrix.artifact == 'win_x64'") &&
+      installersWorkflow.includes("GITHUB_TOKEN") &&
+      releaseWorkflow.includes("installed-upgrade-smoke.ps1") &&
+      releaseWorkflow.includes("验证在线升级安装后可重启") &&
+      releaseWorkflow.includes("matrix.artifact == 'win_x64'") &&
+      releaseWorkflow.includes("GITHUB_TOKEN"),
+    "Windows x64 build workflows should install a previous release, upgrade with the built installer, and verify restart via the installed-upgrade smoke before publishing artifacts.",
+  );
+
+  record(
+    risks,
     "TAG-RELEASE-WORKFLOW-NOT-USING-BUILD-SCRIPTS",
     releaseWorkflow.includes("npm run ${{ matrix.script }}") &&
       releaseWorkflow.includes('node-version: "24"') &&
@@ -165,6 +181,14 @@ function main() {
       autoTagWorkflow.includes("--allow-same-version") &&
       autoTagWorkflow.includes('git push origin "${CLIENT_VERSION}"'),
     "The auto tag workflow should bump/tag valid branch pushes and plugin releases using RELEASE_PAT so tag pushes can trigger the release workflow.",
+  );
+
+  record(
+    risks,
+    "CI-UPGRADE-SMOKE-SYNTAX-MISSING",
+    ciWorkflow.includes("installed-upgrade-smoke.ps1") &&
+      ciWorkflow.includes("[scriptblock]::Create"),
+    "CI syntax checks should parse the installed upgrade smoke PowerShell script.",
   );
 
   console.log(

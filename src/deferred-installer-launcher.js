@@ -41,6 +41,7 @@ function buildDeferredInstallerScript(options = {}) {
   const installerArgs = options.installerArgs || WINDOWS_UPGRADE_INSTALLER_ARGS;
   const launcherLogPath = options.launcherLogPath || getLauncherLogPath();
   const launcherId = options.launcherId || getLauncherId(waitPid);
+  const waitForInstallerExit = options.waitForInstallerExit !== false;
 
   if (!installerPath) {
     throw new Error("升级安装包路径不能为空");
@@ -70,6 +71,12 @@ function buildDeferredInstallerScript(options = {}) {
     "try {",
     "  $process = Start-Process -FilePath $installer -ArgumentList $installerArgs -WindowStyle Normal -PassThru -ErrorAction Stop",
     '  Write-LauncherLog "started installer pid $($process.Id)"',
+    ...(waitForInstallerExit
+      ? [
+          "  $process.WaitForExit()",
+          '  Write-LauncherLog "installer exit code $($process.ExitCode)"',
+        ]
+      : []),
     "} catch {",
     '  Write-LauncherLog "FAILED: $($_.Exception.Message)"',
     "  throw",
@@ -175,6 +182,7 @@ function launchInstallerAfterProcessExit(installerPath, options = {}) {
       installerArgs: options.installerArgs || WINDOWS_UPGRADE_INSTALLER_ARGS,
       launcherLogPath,
       launcherId,
+      waitForInstallerExit: options.waitForInstallerExit,
     });
     let launcherScriptPath;
     try {

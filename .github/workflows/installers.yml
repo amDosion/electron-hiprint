@@ -94,6 +94,18 @@ jobs:
             if (-not ($files | Where-Object { $_.Name.EndsWith(".deb") })) { throw "Missing Linux deb for $artifact" }
           }
 
+      - name: Smoke online upgrade restart
+        if: matrix.artifact == 'win_x64'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path out -File -Filter "hiprint_${{ matrix.artifact }}-*.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "Missing Windows x64 installer for upgrade smoke"
+          }
+          ./tools/repro/updater/installed-upgrade-smoke.ps1 -CurrentInstaller $installer.FullName
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v6
         with:

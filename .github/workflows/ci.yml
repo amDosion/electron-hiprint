@@ -41,3 +41,4 @@ jobs:
           node --check tools/utils.js
           node --check build/write-build-info.js
           node --check tools/repro/updater/github-online-upgrade-check.js
+          pwsh -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw tools/repro/updater/installed-upgrade-smoke.ps1)) | Out-Null"
