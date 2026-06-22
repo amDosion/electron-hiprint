@@ -33,6 +33,7 @@ function main() {
   const releaseWorkflow = read(".github/workflows/release.yml");
   const ciWorkflow = read(".github/workflows/ci.yml");
   const autoTagWorkflow = read(".github/workflows/plugin-bump.yml");
+  const electronScriptRunner = read("tools/repro/runtime/run-electron-script.js");
 
   const directBuilderScripts = Object.entries(scripts).filter(
     ([name, value]) => {
@@ -150,6 +151,19 @@ function main() {
       releaseWorkflow.includes("matrix.artifact == 'win_x64'") &&
       releaseWorkflow.includes("GITHUB_TOKEN"),
     "Windows x64 build workflows should verify packaged startup SQLite logging, install a previous release, upgrade with the built installer, and verify restart via the installed-upgrade smoke before publishing artifacts.",
+  );
+
+  record(
+    risks,
+    "ELECTRON-SMOKE-RUNNER-MISSING-PATH-RESTORE",
+    electronScriptRunner.includes("restoreElectronPathFile") &&
+      electronScriptRunner.includes("getElectronPlatformPath") &&
+      electronScriptRunner.includes('fs.writeFileSync(pathFile, platformPath)') &&
+      electronScriptRunner.includes('path.join(electronDir, "dist")') &&
+      electronScriptRunner.includes("install.js") &&
+      !installersWorkflow.includes("npx electron tools/repro/runtime/packaged-main-startup-log-check.js") &&
+      !releaseWorkflow.includes("npx electron tools/repro/runtime/packaged-main-startup-log-check.js"),
+    "The packaged startup smoke should not depend on npx electron after electron-builder; its runner must restore Electron path.txt when dist already exists.",
   );
 
   record(

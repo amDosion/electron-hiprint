@@ -11,10 +11,32 @@ function fail(message) {
   process.exit(1);
 }
 
+function getElectronPlatformPath() {
+  switch (process.platform) {
+    case "darwin":
+      return "Electron.app/Contents/MacOS/Electron";
+    case "win32":
+      return "electron.exe";
+    default:
+      return "electron";
+  }
+}
+
+function restoreElectronPathFile(electronDir, pathFile) {
+  const platformPath = getElectronPlatformPath();
+  const distRoot =
+    process.env.ELECTRON_OVERRIDE_DIST_PATH || path.join(electronDir, "dist");
+  const electronBinary = path.join(distRoot, platformPath);
+  if (!fs.existsSync(electronBinary)) return false;
+  fs.writeFileSync(pathFile, platformPath);
+  return true;
+}
+
 function ensureElectronInstall() {
   const electronDir = path.join(repoRoot, "node_modules", "electron");
   const pathFile = path.join(electronDir, "path.txt");
   if (fs.existsSync(pathFile)) return;
+  if (restoreElectronPathFile(electronDir, pathFile)) return;
 
   const installScript = path.join(electronDir, "install.js");
   if (!fs.existsSync(installScript)) {
@@ -34,7 +56,7 @@ function ensureElectronInstall() {
   if (result.status !== 0) {
     fail(`Electron install script exited with ${result.status}`);
   }
-  if (!fs.existsSync(pathFile)) {
+  if (!fs.existsSync(pathFile) && !restoreElectronPathFile(electronDir, pathFile)) {
     fail(`Electron install script did not create ${pathFile}`);
   }
 }
