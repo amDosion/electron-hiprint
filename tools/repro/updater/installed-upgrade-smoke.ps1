@@ -294,7 +294,7 @@ launchInstallerAfterProcessExit(installerPath, {
   waitPid,
   launcherLogPath,
   readyTimeoutMs: 15000,
-  installerArgs: ['/S', '/KEEP_APP_DATA', `/D=${installDir}`],
+  installerArgs: ['/S', '/KEEP_APP_DATA', '/D=' + installDir],
   waitForInstallerExit: true,
 }).then(() => {
   console.log('launcher-ready');
