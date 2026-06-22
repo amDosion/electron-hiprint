@@ -76,6 +76,13 @@ expect(
     files.main,
   ),
 );
+expect(
+  "main-applies-user-data-override-before-sqlite-store",
+  files.main.includes("HIPRINT_USER_DATA_DIR") &&
+    files.main.indexOf("applyUserDataPathOverride();") >= 0 &&
+    files.main.indexOf("applyUserDataPathOverride();") <
+      files.main.indexOf('require("./src/software-log-store")'),
+);
 expectAbsent("main-has-no-file-log-path", "main", [
   "transports.file.resolvePathFn",
   "YYYY-MM-DD.log",

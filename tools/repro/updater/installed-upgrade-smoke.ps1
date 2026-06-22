@@ -21,10 +21,12 @@ $RepoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..\..\..")
 $CurrentInstaller = (Resolve-Path -LiteralPath $CurrentInstaller).Path
 $InstallDir = Join-Path $WorkDir "Programs\hiprint"
 $AppDataRoot = Join-Path $WorkDir "AppData"
+$UserDataDir = Join-Path $WorkDir "UserData"
 $LauncherLogPath = Join-Path $WorkDir "online-upgrade-launcher.log"
 $DownloadDir = Join-Path $WorkDir "downloads"
 $EnvMap = @{
   APPDATA = $AppDataRoot
+  HIPRINT_USER_DATA_DIR = $UserDataDir
 }
 
 function Write-Step([string]$Message) {
@@ -250,6 +252,7 @@ db.get("SELECT msg FROM software_logs WHERE msg LIKE '%Electron-hiprint 启动%'
 
 function Get-SmokeDatabasePaths {
   $paths = New-Object System.Collections.Generic.List[string]
+  $paths.Add((Join-Path $UserDataDir "database.sqlite"))
   foreach ($appName in @("electron-hiprint", "hiprint")) {
     $paths.Add((Join-Path $AppDataRoot "$appName\database.sqlite"))
   }
@@ -359,7 +362,7 @@ try {
   if (Test-Path -LiteralPath $WorkDir) {
     Remove-Item -LiteralPath $WorkDir -Recurse -Force
   }
-  New-Item -ItemType Directory -Force -Path $WorkDir, $AppDataRoot, $DownloadDir | Out-Null
+  New-Item -ItemType Directory -Force -Path $WorkDir, $AppDataRoot, $UserDataDir, $DownloadDir | Out-Null
 
   $previous = Get-PreviousRelease $ExpectedVersion
   $asset = Get-WindowsX64Asset $previous.Release

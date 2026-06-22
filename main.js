@@ -15,8 +15,21 @@ const {
   protocol,
 } = require("electron");
 const electronLog = require("electron-log");
+const fs = require("fs");
 const path = require("path");
 const server = require("http").createServer();
+
+function applyUserDataPathOverride() {
+  const userDataDir = process.env.HIPRINT_USER_DATA_DIR;
+  if (!userDataDir) return;
+
+  const resolvedUserDataDir = path.resolve(userDataDir);
+  fs.mkdirSync(resolvedUserDataDir, { recursive: true });
+  app.setPath("userData", resolvedUserDataDir);
+}
+
+applyUserDataPathOverride();
+
 const helper = require("./src/helper");
 const printSetup = require("./src/print");
 const renderSetup = require("./src/render");
