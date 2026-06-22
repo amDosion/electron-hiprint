@@ -155,15 +155,20 @@ function main() {
 
   record(
     risks,
-    "ELECTRON-SMOKE-RUNNER-MISSING-PATH-RESTORE",
+    "ELECTRON-SMOKE-RUNNER-MISSING-RUNTIME-RESTORE",
     electronScriptRunner.includes("restoreElectronPathFile") &&
+      electronScriptRunner.includes("restoreElectronFromArtifact") &&
       electronScriptRunner.includes("getElectronPlatformPath") &&
+      electronScriptRunner.includes("getElectronArch") &&
       electronScriptRunner.includes('fs.writeFileSync(pathFile, platformPath)') &&
       electronScriptRunner.includes('path.join(electronDir, "dist")') &&
+      electronScriptRunner.includes('require("@electron/get")') &&
+      electronScriptRunner.includes('require("extract-zip")') &&
+      electronScriptRunner.includes("downloadArtifact") &&
       electronScriptRunner.includes("install.js") &&
       !installersWorkflow.includes("npx electron tools/repro/runtime/packaged-main-startup-log-check.js") &&
       !releaseWorkflow.includes("npx electron tools/repro/runtime/packaged-main-startup-log-check.js"),
-    "The packaged startup smoke should not depend on npx electron after electron-builder; its runner must restore Electron path.txt when dist already exists.",
+    "The packaged startup smoke should not depend on npx electron after electron-builder; its runner must restore Electron path.txt from an existing dist or recreate the Electron runtime directly from the Electron artifact.",
   );
 
   record(
