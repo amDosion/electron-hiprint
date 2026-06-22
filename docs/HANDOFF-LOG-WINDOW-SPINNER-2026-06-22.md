@@ -1,5 +1,20 @@
 # 日志窗口转圈问题交接
 
+## 交接状态
+
+状态：未修复，不能关单。
+
+本轮只能确认：问题不是一个已经被验证闭环的简单 UI bug。之前确实提交过 loading overlay 修复，但验收只覆盖了 repo 内 Electron / mock IPC / 受控窗口，没有覆盖用户真正运行的安装态客户端、托盘入口、可见窗口和 SQLite 中的 overlay teardown 证据。
+
+2026-06-22 本轮同步 `1.0.82` 自动版本提交后，重新核对到的基线状态：
+
+- 仓库基线：`fe57050 chore(release): client 1.0.82 (code change, patch)`
+- 仓库 `package.json`：`1.0.82`
+- 本机安装态 `%LOCALAPPDATA%\Programs\hiprint\resources\app.asar`：`1.0.80`
+- 本机 SQLite：`software_logs` 199 行 / 8138 字符 / 单条最长 140 字符；`print_logs` 4 行
+
+这个版本差异本身就是风险点：如果用户截图来自安装态 `1.0.80`，而我们只验证仓库 `1.0.82` 或 repo 内 Electron，就会再次得出错误结论。下一位接手前必须先对齐“截图来自哪个 exe、哪个 app.asar 版本、哪个进程实例”。
+
 ## 当前情况
 
 软件日志 / 打印记录窗口又出现只显示 `loading.html` 四点转圈的问题。这已经是第二次复发，下一轮不能再按单点 UI 补丁处理，必须按未闭环的根因问题处理。
@@ -11,7 +26,9 @@
 
 ## 为什么之前改过还会回来
 
-之前确实有过相关提交，但验证边界不完整。
+之前确实有过相关提交，但验证边界不完整。第二次复发的直接原因不是 `src/loading-view.js` 没被抽出来，而是抽出来以后没有把“安装态真实可见窗口不再停留在 loading overlay”做成必须通过的回归门禁。
+
+换句话说，之前的修复解决了“受控窗口里 overlay 能被移除”这个较小问题；用户现在看到的是“安装后的客户端通过托盘打开日志窗口时仍然转圈”这个更大的问题。两者不是同一个验收边界。
 
 | 提交 | 做了什么 | 为什么还不够 |
 | --- | --- | --- |
@@ -25,7 +42,7 @@
 
 ## 当前证据
 
-仓库已快进到 `origin/master`，当前 `package.json` 版本是 `1.0.80`。已安装客户端也是 `1.0.80`：
+上一轮调查时，仓库和安装态都曾核对为 `1.0.80`：
 
 ```powershell
 node -e "const asar=require('@electron/asar'); const p=process.env.LOCALAPPDATA+'\\Programs\\hiprint\\resources\\app.asar'; const pkg=JSON.parse(asar.extractFile(p,'package.json').toString()); console.log(JSON.stringify({version:pkg.version,path:p},null,2));"
@@ -40,11 +57,13 @@ node -e "const asar=require('@electron/asar'); const p=process.env.LOCALAPPDATA+
 }
 ```
 
-当前 SQLite 体量不支持“日志太大导致一直转圈”这个判断：
+本轮重新核对时，仓库已到 `1.0.82`，但本机安装态仍是 `1.0.80`。这说明下一轮复现必须先确认正在操作的 exe 和 app.asar，不允许只看仓库源码。
+
+本轮 SQLite 体量仍然不支持“日志太大导致一直转圈”这个判断：
 
 ```json
 [
-  { "table_name": "software_logs", "rows": 194, "chars": 8030, "max_msg": 140 },
+  { "table_name": "software_logs", "rows": 199, "chars": 8138, "max_msg": 140 },
   { "table_name": "print_logs", "rows": 4, "chars": 0, "max_msg": 0 }
 ]
 ```
@@ -119,6 +138,8 @@ overlay 的拥有者是 `src/loading-view.js`。
 当前 SQLite 行数和文本体量不支持把主因归到日志太大。
 
 ## 下一步必须做什么
+
+先不要改 UI，也不要加固定 timeout。第一步必须补证据：当前安装态进程到底有没有执行 overlay teardown。
 
 1. 给 overlay teardown 加明确日志。
 
@@ -200,11 +221,14 @@ node tools/repro/runtime/tray-log-window-contract-check.js
 
 必须全部满足，才能说这个问题修好了：
 
+- 先清理/枚举旧进程，并确认当前截图、当前 exe、当前 app.asar 版本一致。
 - 验证对象是安装态 `%LOCALAPPDATA%\Programs\hiprint\hiprint.exe`，不是只验证 repo 内 Electron。
 - 通过生产托盘路径打开软件日志和打印记录后，窗口显示真实内容。
 - 截图或 DOM/text 断言证明可见窗口没有停在 `loading.html`。
 - SQLite 日志包含两个窗口的页面生命周期和 overlay teardown 记录。
 - CI 或 release workflow 有 Windows installed-artifact smoke，覆盖同一条路径或等价的测试专用生产入口。
+
+不满足这些条件时，任何 “`loading-view-lifecycle-check.js` passed” 或 “repo 截图 smoke passed” 都只能算辅助证据，不能说已经修好。
 
 ## 给下一位 Agent 的提示词
 

@@ -248,20 +248,51 @@ db.get("SELECT msg FROM software_logs WHERE msg LIKE '%Electron-hiprint 启动%'
   }
 }
 
+function Get-SmokeDatabasePaths {
+  $paths = New-Object System.Collections.Generic.List[string]
+  foreach ($appName in @("electron-hiprint", "hiprint")) {
+    $paths.Add((Join-Path $AppDataRoot "$appName\database.sqlite"))
+  }
+
+  if (Test-Path -LiteralPath $AppDataRoot) {
+    $found = Get-ChildItem -LiteralPath $AppDataRoot -Filter "database.sqlite" -File -Recurse -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty FullName
+    foreach ($path in $found) {
+      $paths.Add($path)
+    }
+  }
+
+  return $paths | Select-Object -Unique
+}
+
+function Get-SmokeDatabaseDiagnostics {
+  $lines = New-Object System.Collections.Generic.List[string]
+  foreach ($path in Get-SmokeDatabasePaths) {
+    if (Test-Path -LiteralPath $path) {
+      $item = Get-Item -LiteralPath $path
+      $lines.Add("exists size=$($item.Length) $path")
+    } else {
+      $lines.Add("missing $path")
+    }
+  }
+
+  return ($lines -join [Environment]::NewLine)
+}
+
 function Assert-StartupLog {
-  $dbPath = Join-Path $AppDataRoot "electron-hiprint\database.sqlite"
   $deadline = [DateTime]::UtcNow.AddSeconds(60)
   while ([DateTime]::UtcNow -lt $deadline) {
-    if (Test-Path -LiteralPath $dbPath) {
+    foreach ($dbPath in Get-SmokeDatabasePaths) {
+      if (-not (Test-Path -LiteralPath $dbPath)) { continue }
       $log = Read-StartupLog $dbPath
       if ($log) {
-        Write-Step "Startup sqlite log verified: $log"
+        Write-Step "Startup sqlite log verified in $dbPath`: $log"
         return
       }
     }
     Start-Sleep -Milliseconds 500
   }
-  throw "Installed app startup log was not written within 60s: $dbPath"
+  throw "Installed app startup log was not written within 60s. Checked database paths:$([Environment]::NewLine)$(Get-SmokeDatabaseDiagnostics)"
 }
 
 function Assert-NoExternalInstall {
