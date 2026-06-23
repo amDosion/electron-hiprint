@@ -1,6 +1,6 @@
 # Task 9 实施报告：main.js 接线
 
-## 状态：DONE_WITH_CONCERNS
+## 状态：DONE
 
 ## 删除的 require
 
@@ -75,13 +75,28 @@ main.js 内所有 MAIN_WINDOW 引用已全部删除或替换：
 
 无 did-fail-load / render-process-gone / MAIN_WINDOW is not defined / 重复注册报错。
 
-## Concerns（需后续任务处理）
+## 修复追加（commit bb4a55b）
 
-1. **utils.js:748 `Cannot read properties of null (reading 'webContents')`** — `getConfiguredPrinterList` 直接访问 `global.MAIN_WINDOW.webContents`，现在 MAIN_WINDOW 为 null（过渡桩）。这是 utils.js 未迁移 MAIN_WINDOW → getAppWindow() 导致的，属于 Task 9 范围外的 pre-existing 问题。Task 10 或后续任务需在 utils.js 里将 `MAIN_WINDOW` 替换为 `require('./src/app-window').getAppWindow()`。
+原 concerns 均已在本次修复中解决，不再留待 Task 10：
 
-2. **helper.js 的 appQuit()** — 仍引用 `MAIN_WINDOW`、`SET_WINDOW`，依赖过渡桩（null）。Task 10 删文件时应一并改 helper.js。
+| 文件 | 改动 |
+|------|------|
+| `tools/utils.js` | 顶部加 `getAppWindow` require；`getConfiguredPrinterList` 加 null 守卫返回 `[]`；3 处无守卫 `MAIN_WINDOW.webContents.send` → `getAppWindow()?.webContents.send`；`sendMainWindow`/`emitConnectionStatus` 改用 `getAppWindow()` |
+| `src/print.js` | 顶部加 `getAppWindow` require；7 处 `MAIN_WINDOW && MAIN_WINDOW.webContents.send` → `getAppWindow()?.webContents.send` |
+| `src/helper.js` | 顶部加 `getAppWindow, destroyConsole` require；`appQuit` 删 SET_WINDOW/MAIN_WINDOW.destroy，改为 `destroyConsole()`；`showMessageBox` 父窗口回退改为 `getAppWindow()` |
+| `main.js` | 删除 4 行 null 桩（MAIN_WINDOW/SET_WINDOW/PRINT_LOG_WINDOW/SOFTWARE_LOG_WINDOW） |
+
+**修复后 grep 残留：** 4 个文件 MAIN_WINDOW/SET_WINDOW 残留 = 0
+
+**修复后冒烟：**
+```
+Connected to database
+==> Electron-hiprint 启动 <==
+控制台窗口：dom-ready 2263ms
+控制台窗口：did-finish-load 2284ms
+```
+无 null 访问崩溃，无 did-fail-load，无 render-process-gone。
 
 ## 与 plan 的偏离
 
 - `systemSetup` 中增加了登录项设置（从原 createWindow 迁移），plan 未明确提到，但属于合理归并，不改变语义。
-- 过渡桩声明是 plan 未覆盖的现实需要（helper.js 严格模式引用）；已记录为 concern 待 Task 10 清理。
