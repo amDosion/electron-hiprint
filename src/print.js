@@ -7,6 +7,7 @@ const fs = require("fs");
 const { printPdf, printPdfBlob } = require("./pdf-print");
 const { getFileAssetUrl } = require("./asset-url");
 const { store, getCurrentPrintStatusByName } = require("../tools/utils");
+const { getAppWindow } = require("./app-window");
 const {
   getPrinterReadiness,
   formatPrinterStatus,
@@ -115,8 +116,7 @@ function initPrintEvent() {
         PRINT_RUNNER_DONE[data.taskId]();
         delete PRINT_RUNNER_DONE[data.taskId];
       }
-      MAIN_WINDOW &&
-        MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+      getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
       return;
     }
 
@@ -194,11 +194,7 @@ function initPrintEvent() {
                 // 删除 task
                 delete PRINT_RUNNER_DONE[data.taskId];
               }
-              MAIN_WINDOW &&
-                MAIN_WINDOW.webContents.send(
-                  "printTask",
-                  PRINT_RUNNER.isBusy(),
-                );
+              getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
             });
         })
         .catch((err) => {
@@ -220,8 +216,7 @@ function initPrintEvent() {
             PRINT_RUNNER_DONE[data.taskId]();
             delete PRINT_RUNNER_DONE[data.taskId];
           }
-          MAIN_WINDOW &&
-            MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+          getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
         });
       return;
     }
@@ -272,8 +267,7 @@ function initPrintEvent() {
             // 删除 task
             delete PRINT_RUNNER_DONE[data.taskId];
           }
-          MAIN_WINDOW &&
-            MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+          getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
         });
       return;
     }
@@ -300,8 +294,7 @@ function initPrintEvent() {
           PRINT_RUNNER_DONE[data.taskId]();
           delete PRINT_RUNNER_DONE[data.taskId];
         }
-        MAIN_WINDOW &&
-          MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+        getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
         return;
       }
       let pdfBlob = data.pdf_blob;
@@ -350,8 +343,7 @@ function initPrintEvent() {
             // 删除 task
             delete PRINT_RUNNER_DONE[data.taskId];
           }
-          MAIN_WINDOW &&
-            MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+          getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
         });
       return;
     }
@@ -417,8 +409,7 @@ function initPrintEvent() {
           // 删除 task
           delete PRINT_RUNNER_DONE[data.taskId];
         }
-        MAIN_WINDOW &&
-          MAIN_WINDOW.webContents.send("printTask", PRINT_RUNNER.isBusy());
+        getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
       },
     );
   });

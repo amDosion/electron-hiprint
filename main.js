@@ -4,13 +4,7 @@
  * @LastEditTime: 2024-12-23 15:23:56
  * @FilePath: \electron-hiprint\main.js
  */
-const {
-  app,
-  BrowserWindow,
-  Tray,
-  Menu,
-  protocol,
-} = require("electron");
+const { app, BrowserWindow, Tray, Menu, protocol } = require("electron");
 const electronLog = require("electron-log");
 const fs = require("fs");
 const path = require("path");
@@ -105,12 +99,6 @@ global.APP_TRAY = null;
 global.PRINT_WINDOW = null;
 // 渲染窗口
 global.RENDER_WINDOW = null;
-// 过渡桩：Task 10 删除旧窗口模块前 helper.js 等仍引用这些全局名，
-// 保持声明避免 ReferenceError；实体不再使用。
-global.MAIN_WINDOW = null;
-global.SET_WINDOW = null;
-global.PRINT_LOG_WINDOW = null;
-global.SOFTWARE_LOG_WINDOW = null;
 // socket.io 服务端
 global.SOCKET_SERVER = null;
 // socket.io-client 客户端
@@ -281,7 +269,11 @@ async function initialize() {
 
   // socket server 生命周期解耦：绑到 app 退出而非控制台窗口销毁
   app.on("before-quit", () => {
-    try { server.close(); } catch { /* 关闭异常忽略 */ }
+    try {
+      server.close();
+    } catch {
+      /* 关闭异常忽略 */
+    }
   });
 }
 

@@ -6,6 +6,7 @@ const childProcess = require("child_process");
 const net = require("net");
 const { app, Notification, dialog, clipboard, shell } = require("electron");
 const address = require("address");
+const { getAppWindow } = require("../src/app-window");
 const ipp = require("ipp");
 const { machineIdSync } = require("node-machine-id");
 const Store = require("electron-store");
@@ -745,7 +746,9 @@ function emitClientInfo(socket) {
 
 async function getConfiguredPrinterList() {
   const defaultPrinter = store.get("defaultPrinter", "");
-  const printers = await MAIN_WINDOW.webContents.getPrintersAsync();
+  const win = getAppWindow();
+  if (!win || win.isDestroyed()) return [];
+  const printers = await win.webContents.getPrintersAsync();
   return printers.map((printer) => ({
     ...printer,
     defaultPrinter,
@@ -1078,7 +1081,7 @@ function initServeEvent(server) {
           data.taskId = uuidv7();
           data.clientType = "local";
           PRINT_WINDOW.webContents.send("print-new", data);
-          MAIN_WINDOW.webContents.send("printTask", true);
+          getAppWindow()?.webContents.send("printTask", true);
           PRINT_RUNNER_DONE[data.taskId] = done;
         });
       }
@@ -1125,7 +1128,7 @@ function initServeEvent(server) {
             data.taskId = uuidv7();
             data.clientType = "local";
             PRINT_WINDOW.webContents.send("print-new", data);
-            MAIN_WINDOW.webContents.send("printTask", true);
+            getAppWindow()?.webContents.send("printTask", true);
             PRINT_RUNNER_DONE[data.taskId] = done;
           });
         }
@@ -1235,15 +1238,17 @@ function getConnectionStatus() {
 }
 
 function sendMainWindow(channel, payload) {
-  const webContents = global.MAIN_WINDOW && global.MAIN_WINDOW.webContents;
+  const win = getAppWindow();
+  const webContents = win && !win.isDestroyed() ? win.webContents : null;
   if (!webContents || webContents.isDestroyed()) return false;
   webContents.send(channel, payload);
   return true;
 }
 
 function emitConnectionStatus(webContents) {
+  const win = getAppWindow();
   const target =
-    webContents || (global.MAIN_WINDOW && global.MAIN_WINDOW.webContents);
+    webContents || (win && !win.isDestroyed() ? win.webContents : null);
   if (!target || target.isDestroyed()) return false;
   target.send("connectionStatus", getConnectionStatus());
   return true;
@@ -1401,7 +1406,7 @@ function initClientEvent() {
         data.taskId = uuidv7();
         data.clientType = "transit";
         PRINT_WINDOW.webContents.send("print-new", data);
-        MAIN_WINDOW.webContents.send("printTask", true);
+        getAppWindow()?.webContents.send("printTask", true);
         PRINT_RUNNER_DONE[data.taskId] = done;
       });
     }
