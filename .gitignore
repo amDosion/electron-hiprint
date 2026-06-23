@@ -20,8 +20,10 @@ out/
 tools/database.sqlite
 /build-info.json
 .investigations/
+.superpowers/
 
 # 渲染层构建产物：由 tools/build-renderer.js 生成、打包时 build-package.js 重新生成，绝不入版本库
+/assets/console.html
 /assets/index.html
 /assets/printLog.html
 /assets/render.html
