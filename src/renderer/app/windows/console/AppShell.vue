@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Monitor, Setting, Document, Tickets } from '@element-plus/icons-vue'
+import { Monitor, Operation, Share, Tools, Document, Tickets } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const NAV = [
   { name: 'status', path: '/status', label: '连接状态', icon: Monitor },
-  { name: 'settings', path: '/settings', label: '设置', icon: Setting },
+  { name: 'settingsBasic', path: '/settings/basic', label: '基础设置', icon: Operation },
+  { name: 'settingsTransit', path: '/settings/transit', label: '中转设置', icon: Share },
+  { name: 'settingsAdvanced', path: '/settings/advanced', label: '高级配置', icon: Tools },
   { name: 'printLog', path: '/print-log', label: '打印记录', icon: Tickets },
   { name: 'softwareLog', path: '/software-log', label: '软件日志', icon: Document },
 ]

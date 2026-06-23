@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { requireBridge } from '@/shared/bridge'
@@ -9,6 +9,7 @@ import { requireBridge } from '@/shared/bridge'
 const ipc = requireBridge(window.hiprintSet, 'hiprintSet', 'preload/console.js')
 
 const router = useRouter()
+const route = useRoute()
 
 interface FormItem {
   label: string
@@ -126,7 +127,6 @@ function serializeFormData(data: SetFormData): Record<string, unknown> {
 }
 
 const formRef = ref<FormInstance>()
-const setTab = ref('basicSet')
 const printerList = ref<Array<Record<string, unknown>>>([])
 const formData = reactive<SetFormData>({
   ...DEFAULTS,
@@ -134,10 +134,24 @@ const formData = reactive<SetFormData>({
 })
 
 const tabs = [
-  { label: '基础设置', name: 'basicSet' },
-  { label: '中转设置', name: 'transitSet' },
-  { label: '高级设置', name: 'advancedSet' },
+  {
+    label: '基础设置',
+    name: 'basicSet',
+    description: '端口、本地授权、设备别名与缓存路径',
+  },
+  {
+    label: '中转设置',
+    name: 'transitSet',
+    description: '云打印中转服务与连接测试',
+  },
+  {
+    label: '高级配置',
+    name: 'advancedSet',
+    description: '启动、打印机、导出目录与关闭行为',
+  },
 ]
+const setTab = computed(() => String(route.meta.settingsTab || 'basicSet'))
+const activeTab = computed(() => tabs.find((tab) => tab.name === setTab.value) || tabs[0])
 
 // setContentSize 相关逻辑已删除：统一窗口不再按内容改尺寸。
 // 原 handleTabChange 中的 ipc.send('setContentSize', ...) 与 document.querySelector('#app') 量高代码均移除。
@@ -441,65 +455,65 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="cv-settings">
-    <el-tabs v-model="setTab" @tab-click="handleTabChange">
-      <el-tab-pane v-for="tab in tabs" :key="tab.name" :label="tab.label" :name="tab.name" />
-    </el-tabs>
-    <el-form ref="formRef" :model="formData" :rules="rules" size="small" label-position="top" :inline="true">
-      <el-row :gutter="12">
-        <template v-for="item in formOptions.items" :key="item.prop || item.label">
-          <el-col v-if="item.display !== false" :span="item.span || 24">
-            <el-form-item :label="item.label" :prop="item.prop" :style="item.style">
-              <template #label>
-                <el-tooltip v-if="item.tips" :content="item.tips" placement="top-start">
-                  <span>{{ item.label }} <el-icon class="el-icon-question"><question-filled /></el-icon></span>
-                </el-tooltip>
-                <span v-else>{{ item.label }}</span>
-              </template>
-              <component
-                v-if="item.optionIs"
-                :is="item.is"
-                v-model="formData[item.prop as string]"
-                v-bind="item.attrs"
-                v-on="item.event"
-              >
+    <section class="settings-content">
+      <header class="settings-header">
+        <span class="settings-kicker">设置</span>
+        <h1>{{ activeTab.label }}</h1>
+        <p>{{ activeTab.description }}</p>
+      </header>
+      <el-form ref="formRef" :model="formData" :rules="rules" size="small" label-position="top">
+        <el-row :gutter="12">
+          <template v-for="item in formOptions.items" :key="item.prop || item.label">
+            <el-col v-if="item.display !== false" :span="item.span || 24">
+              <el-form-item :label="item.label" :prop="item.prop" :style="item.style">
+                <template #label>
+                  <el-tooltip v-if="item.tips" :content="item.tips" placement="top-start">
+                    <span>{{ item.label }} <el-icon class="el-icon-question"><question-filled /></el-icon></span>
+                  </el-tooltip>
+                  <span v-else>{{ item.label }}</span>
+                </template>
                 <component
-                  v-for="(option, oi) in item.options"
-                  :is="item.optionIs"
-                  :key="oi"
-                  v-bind="option"
+                  v-if="item.optionIs"
+                  :is="item.is"
+                  v-model="formData[item.prop as string]"
+                  v-bind="item.attrs"
+                  v-on="item.event"
                 >
-                  {{ option.content || option.value }}
+                  <component
+                    v-for="(option, oi) in item.options"
+                    :is="item.optionIs"
+                    :key="oi"
+                    v-bind="option"
+                  >
+                    {{ option.content || option.value }}
+                  </component>
                 </component>
-              </component>
-              <component
-                v-else-if="item.prop"
-                :is="item.is"
-                v-model="formData[item.prop as string]"
-                v-bind="item.attrs"
-                v-on="item.event"
-              >
-                {{ item.content }}
-              </component>
-              <component v-else :is="item.is" v-bind="item.attrs" v-on="item.event">
-                {{ item.content }}
-              </component>
+                <component
+                  v-else-if="item.prop"
+                  :is="item.is"
+                  v-model="formData[item.prop as string]"
+                  v-bind="item.attrs"
+                  v-on="item.event"
+                >
+                  {{ item.content }}
+                </component>
+                <component v-else :is="item.is" v-bind="item.attrs" v-on="item.event">
+                  {{ item.content }}
+                </component>
+              </el-form-item>
+            </el-col>
+          </template>
+          <el-col :span="24">
+            <el-form-item>
+              <div class="settings-actions">
+                <el-button size="small" @click="close">关闭</el-button>
+                <el-button type="primary" size="small" @click="submit">应用</el-button>
+              </div>
             </el-form-item>
           </el-col>
-        </template>
-        <el-col :span="24">
-          <el-form-item>
-            <el-row :gutter="12" style="width: 100%">
-              <el-col :span="12">
-                <el-button type="primary" size="small" @click="submit">应用</el-button>
-              </el-col>
-              <el-col :span="12">
-                <el-button size="small" @click="close">关闭</el-button>
-              </el-col>
-            </el-row>
-          </el-form-item>
-        </el-col>
-      </el-row>
-    </el-form>
+        </el-row>
+      </el-form>
+    </section>
   </div>
 </template>
 
@@ -509,65 +523,64 @@ onBeforeUnmount(() => {
  * 视觉与已审核稿 docs/ui-redesign/02-settings.svg 一致。
  * ============================================================ */
 .cv-settings {
+  --set-brand: var(--c-brand);
+  --set-brand-strong: #2448c7;
+  --set-brand-soft: var(--c-brand-soft);
+  --set-text: var(--c-text);
+  --set-text-muted: var(--c-text-2);
+  --set-text-faint: var(--c-text-3);
+  --set-page: var(--c-page);
+  --set-card: var(--c-card);
+  --set-field: #f7f9fc;
+  --set-border: var(--c-border);
+  --set-danger: var(--c-danger);
+  --set-radius-card: var(--r-card);
+  --set-radius-control: var(--r-ctrl);
+  --set-shadow: 0 1px 3px rgba(26, 34, 51, 0.06), 0 10px 28px rgba(26, 34, 51, 0.06);
   height: 100%;
   overflow: auto;
-  padding: 18px 20px 20px;
+  padding: 18px 20px;
   box-sizing: border-box;
 }
 
-/* ---------- 分段切换式 Tabs ---------- */
-.cv-settings .el-tabs {
-  margin-bottom: 18px;
+.settings-content {
+  min-width: 0;
+  max-width: 900px;
 }
 
-.cv-settings .el-tabs__header {
-  margin: 0;
+.settings-header {
+  margin-bottom: 10px;
 }
 
-.cv-settings .el-tabs__nav-wrap::after {
-  display: none;
-}
-
-.cv-settings .el-tabs__active-bar {
-  display: none;
-}
-
-.cv-settings .el-tabs__nav {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: #e9edf4;
-  border-radius: 9px;
-  box-sizing: border-box;
-}
-
-.cv-settings .el-tabs__item {
-  height: 30px;
-  line-height: 30px;
-  padding: 0 18px !important;
-  font-size: 13px;
+.settings-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--set-text-faint);
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-2);
-  border-radius: 7px;
-  transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.cv-settings .el-tabs__item:hover {
-  color: var(--brand);
+.settings-header h1 {
+  margin: 0;
+  color: var(--set-text);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
-.cv-settings .el-tabs__item.is-active {
-  color: var(--brand);
-  background: var(--card-bg);
-  box-shadow: var(--shadow-card);
+.settings-header p {
+  margin: 5px 0 0;
+  color: var(--set-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* ---------- 表单卡片容器 ---------- */
 .cv-settings .el-form {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
+  background: var(--set-card);
+  border: 1px solid var(--set-border);
+  border-radius: var(--set-radius-card);
+  box-shadow: var(--set-shadow);
   padding: 14px 18px 6px;
   box-sizing: border-box;
 }
@@ -582,17 +595,17 @@ onBeforeUnmount(() => {
   line-height: 1.4;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-1);
+  color: var(--set-text);
 }
 
 .cv-settings .el-form-item__label .el-icon-question {
-  color: var(--text-3);
+  color: var(--set-text-faint);
   font-size: 13px;
 }
 
 .cv-settings .el-form-item__error {
   font-size: 11px;
-  color: var(--danger);
+  color: var(--set-danger);
   padding-top: 3px;
 }
 
@@ -604,9 +617,9 @@ onBeforeUnmount(() => {
 
 /* ---------- 输入控件（element-plus 2.x：边框/底色在 __wrapper） ---------- */
 .cv-settings .el-input__wrapper {
-  background: var(--field-bg);
-  border-radius: var(--radius-control);
-  box-shadow: 0 0 0 1px var(--border) inset;
+  background: var(--set-field);
+  border-radius: var(--set-radius-control);
+  box-shadow: 0 0 0 1px var(--set-border) inset;
   transition: box-shadow 0.18s ease, background-color 0.18s ease;
 }
 
@@ -616,28 +629,28 @@ onBeforeUnmount(() => {
 
 .cv-settings .el-input__wrapper.is-focus,
 .cv-settings .el-input__wrapper:focus-within {
-  background: var(--card-bg);
-  box-shadow: 0 0 0 1px var(--brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
+  background: var(--set-card);
+  box-shadow: 0 0 0 1px var(--set-brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
 }
 
 .cv-settings .el-input__inner {
-  color: var(--text-1);
+  color: var(--set-text);
   font-size: 13px;
 }
 
 .cv-settings .el-textarea__inner {
-  background: var(--field-bg);
+  background: var(--set-field);
   border: none;
-  border-radius: var(--radius-control);
-  box-shadow: 0 0 0 1px var(--border) inset;
-  color: var(--text-1);
+  border-radius: var(--set-radius-control);
+  box-shadow: 0 0 0 1px var(--set-border) inset;
+  color: var(--set-text);
   font-size: 13px;
   transition: box-shadow 0.18s ease, background-color 0.18s ease;
 }
 
 .cv-settings .el-input__inner::placeholder,
 .cv-settings .el-textarea__inner::placeholder {
-  color: var(--text-3);
+  color: var(--set-text-faint);
 }
 
 .cv-settings .el-textarea__inner:hover {
@@ -645,8 +658,8 @@ onBeforeUnmount(() => {
 }
 
 .cv-settings .el-textarea__inner:focus {
-  background: var(--card-bg);
-  box-shadow: 0 0 0 1px var(--brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
+  background: var(--set-card);
+  box-shadow: 0 0 0 1px var(--set-brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
 }
 
 /* 只读路径输入用等宽字体 */
@@ -673,46 +686,46 @@ onBeforeUnmount(() => {
 }
 
 .cv-settings .el-select-dropdown {
-  border-radius: var(--radius-control);
-  border: 1px solid var(--border);
+  border-radius: var(--set-radius-control);
+  border: 1px solid var(--set-border);
   box-shadow: 0 6px 16px rgba(26, 34, 51, 0.12);
 }
 
 .cv-settings .el-select-dropdown__item.selected {
-  color: var(--brand);
+  color: var(--set-brand);
   font-weight: 600;
 }
 
 /* ---------- 开关 Switch ---------- */
 .cv-settings .el-switch.is-checked .el-switch__core {
-  border-color: var(--brand);
-  background-color: var(--brand);
+  border-color: var(--set-brand);
+  background-color: var(--set-brand);
 }
 
 /* ---------- 单选（关闭主窗口动作） ---------- */
 .cv-settings .el-radio.is-bordered {
-  border-radius: var(--radius-control);
-  border-color: var(--border);
+  border-radius: var(--set-radius-control);
+  border-color: var(--set-border);
   padding: 8px 14px;
 }
 
 .cv-settings .el-radio.is-bordered.is-checked {
-  border-color: var(--brand);
-  background: var(--brand-soft);
+  border-color: var(--set-brand);
+  background: var(--set-brand-soft);
 }
 
 .cv-settings .el-radio.is-checked .el-radio__inner {
-  border-color: var(--brand);
-  background: var(--brand);
+  border-color: var(--set-brand);
+  background: var(--set-brand);
 }
 
 .cv-settings .el-radio.is-checked .el-radio__label {
-  color: var(--brand);
+  color: var(--set-brand);
 }
 
 /* ---------- 按钮 ---------- */
 .cv-settings .el-button {
-  border-radius: var(--radius-control);
+  border-radius: var(--set-radius-control);
   font-size: 13px;
   font-weight: 600;
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease,
@@ -721,29 +734,37 @@ onBeforeUnmount(() => {
 
 /* 行内「选择 / 测试连接」次级按钮：浅底品牌色 */
 .cv-settings .el-button:not(.el-button--primary) {
-  background: var(--brand-soft);
+  background: var(--set-brand-soft);
   border-color: transparent;
-  color: var(--brand);
+  color: var(--set-brand);
 }
 
 .cv-settings .el-button:not(.el-button--primary):hover,
 .cv-settings .el-button:not(.el-button--primary):focus {
   background: #dde7fd;
   border-color: transparent;
-  color: var(--brand-strong);
+  color: var(--set-brand-strong);
 }
 
 /* 主操作「应用」：实色品牌按钮 */
 .cv-settings .el-button--primary {
-  background: var(--brand);
-  border-color: var(--brand);
+  background: var(--set-brand);
+  border-color: var(--set-brand);
   color: #fff;
 }
 
 .cv-settings .el-button--primary:hover,
 .cv-settings .el-button--primary:focus {
-  background: var(--brand-strong);
-  border-color: var(--brand-strong);
+  background: var(--set-brand-strong);
+  border-color: var(--set-brand-strong);
+}
+
+.settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr;
+  gap: 12px;
+  width: min(360px, 100%);
+  margin-left: auto;
 }
 
 /* ---------- 底部操作区分隔 ---------- */
@@ -751,7 +772,7 @@ onBeforeUnmount(() => {
   margin-top: 4px;
   margin-bottom: 6px;
   padding-top: 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--set-border);
 }
 
 /* 隐藏滚动条但仍可滚动 */
@@ -762,5 +783,11 @@ onBeforeUnmount(() => {
 
 .cv-settings .hide-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+@media (max-width: 840px) {
+  .settings-actions {
+    width: 100%;
+  }
 }
 </style>
