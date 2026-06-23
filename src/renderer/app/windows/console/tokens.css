@@ -1,0 +1,60 @@
+/* ============================================================
+   tokens.css — 控制台 SPA 全局设计令牌
+   合并自 index/App.vue（--c-* 前缀）与 softwareLog/App.vue（--sl-* 前缀）。
+   html / body / #app 基底在此定义一次，视图不得再定义同名规则。
+   ============================================================ */
+
+/* ---- index 窗口变量（--c-* 前缀，来自 index/App.vue :root）---- */
+:root {
+  --c-brand: #3358e0;
+  --c-brand-soft: #eaf0fe;
+  --c-success: #16a34a;
+  --c-success-soft: #e7f6ec;
+  --c-success-text: #16823c;
+  --c-warning: #b5740f;
+  --c-danger: #dc2626;
+  --c-text: #1a2233;
+  --c-text-2: #5b6472;
+  --c-text-3: #9aa3b2;
+  --c-border: #e6e9f0;
+  --c-page: #f4f6fa;
+  --c-card: #ffffff;
+  --c-dot-idle: #c2c8d2;
+  --r-card: 12px;
+  --r-ctrl: 8px;
+  --font-base: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", monospace;
+
+  /* ---- softwareLog 窗口变量（--sl-* 前缀，来自 softwareLog/App.vue :root）---- */
+  --sl-brand: #3358e0;
+  --sl-brand-soft: #eef2ff;
+  --sl-brand-grad: linear-gradient(135deg, #4f7bff 0%, #3358e0 100%);
+  --sl-info: #3358e0;
+  --sl-info-soft: #eef2ff;
+  --sl-warn: #b5740f;
+  --sl-warn-soft: #fef3e2;
+  --sl-warn-text: #8a6d3b;
+  --sl-error: #c0392b;
+  --sl-error-soft: #fdecec;
+  --sl-debug: #8a93a3;
+  --sl-debug-soft: #eef0f3;
+  --sl-debug-text: #5b6472;
+  --sl-text: #1a2233;
+  --sl-text-2: #5b6472;
+  --sl-text-3: #9aa3b2;
+  --sl-border: #e6e9f0;
+  --sl-page: #f4f6fa;
+  --sl-card: #ffffff;
+  --sl-console: #fbfcfe;
+  --sl-radius-card: 12px;
+  --sl-radius-ctrl: 7px;
+  --sl-highlight: #fff2a8;
+  --sl-font: 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif;
+  --sl-mono: 'Cascadia Mono', 'Consolas', monospace;
+  --sl-shadow: 0 1px 3px rgba(26, 34, 51, 0.06), 0 8px 24px rgba(26, 34, 51, 0.05);
+}
+
+/* tokens.css 末尾基底 —— 全局唯一，视图不得再定义 html/body/#app */
+html, body { margin: 0; padding: 0; height: 100%; }
+body { background: var(--c-page); color: var(--c-text); font-family: var(--font-base); -webkit-font-smoothing: antialiased; user-select: none; }
+#app { height: 100vh; }

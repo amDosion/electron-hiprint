@@ -20,6 +20,8 @@ const rendererRoot = resolve(__dirname, "src/renderer");
 
 // 已移植为 SFC 的窗口入口表。新增窗口在此登记即可。
 const WINDOW_ENTRIES: Record<string, string> = {
+  // 控制台单页（L3 重构：合并 index/set/printLog/softwareLog 四窗口）
+  console: resolve(rendererRoot, "console.html"),
   index: resolve(rendererRoot, "index.html"),
   set: resolve(rendererRoot, "set.html"),
   printLog: resolve(rendererRoot, "printLog.html"),
