@@ -7,11 +7,8 @@
 const {
   app,
   BrowserWindow,
-  ipcMain,
-  Notification,
   Tray,
   Menu,
-  clipboard,
   protocol,
 } = require("electron");
 const electronLog = require("electron-log");
@@ -33,11 +30,7 @@ applyUserDataPathOverride();
 const helper = require("./src/helper");
 const printSetup = require("./src/print");
 const renderSetup = require("./src/render");
-const setSetup = require("./src/set");
-const printLogSetup = require("./src/printLog");
-const softwareLogSetup = require("./src/softwareLog");
 const { getAssetUrl } = require("./src/asset-url");
-const { attachLoadingView } = require("./src/loading-view");
 const {
   registerAssetSchemeAsPrivileged,
   registerAssetProtocol,
@@ -45,13 +38,17 @@ const {
 const { runOnlineUpgrade } = require("./src/online-upgrade-runner");
 const {
   store,
-  address,
   initServeEvent,
   initClientEvent,
-  emitConnectionStatus,
-  getMachineId,
   showAboutDialog,
 } = require("./tools/utils");
+const {
+  getAppWindow,
+  showConsole,
+  prewarmConsole,
+  destroyConsole,
+} = require("./src/app-window");
+const { registerConsoleIpc } = require("./src/console-ipc");
 
 const TaskRunner = require("concurrent-tasks");
 
@@ -102,19 +99,17 @@ if (store.get("disabledGpu")) {
   app.commandLine.appendSwitch("disable-gpu");
 }
 
-// 主进程
-global.MAIN_WINDOW = null;
 // 托盘
 global.APP_TRAY = null;
 // 打印窗口
 global.PRINT_WINDOW = null;
-// 设置窗口
-global.SET_WINDOW = null;
 // 渲染窗口
 global.RENDER_WINDOW = null;
-// 打印日志窗口
+// 过渡桩：Task 10 删除旧窗口模块前 helper.js 等仍引用这些全局名，
+// 保持声明避免 ReferenceError；实体不再使用。
+global.MAIN_WINDOW = null;
+global.SET_WINDOW = null;
 global.PRINT_LOG_WINDOW = null;
-// 软件日志窗口
 global.SOFTWARE_LOG_WINDOW = null;
 // socket.io 服务端
 global.SOCKET_SERVER = null;
@@ -233,141 +228,72 @@ async function initialize() {
     return;
   }
 
-  // 当运行第二个实例时（如已在托盘运行时再次双击桌面图标），显示并聚焦主窗口
+  // 当运行第二个实例时（如已在托盘运行时再次双击桌面图标），显示并聚焦控制台
   app.on("second-instance", () => {
-    if (MAIN_WINDOW) {
-      showMainWindow();
-    }
-  });
-
-  // 允许渲染进程创建通知
-  ipcMain.on("notification", (event, data) => {
-    const notification = new Notification(data);
-    // 显示通知
-    notification.show();
-  });
-
-  // 打开设置窗口
-  ipcMain.on("openSetting", openSetWindow);
-
-  // 统一弹出消息框监听（合并原 set.js / render.js 各自注册的同名监听，避免一次消息弹两个框）
-  ipcMain.on("showMessageBox", helper.showMessageBox);
-
-  // 获取设备唯一id
-  ipcMain.on("getMachineId", (event) => {
-    const machineId = getMachineId();
-    event.sender.send("machineId", machineId);
-  });
-
-  // 获取设备ip、mac等信息
-  ipcMain.on("getAddress", (event) => {
-    address.all().then((obj) => {
-      const bindHost = store.get("bindHost") || "127.0.0.1";
-      const clientHost =
-        bindHost === "0.0.0.0" || bindHost === "::" ? obj.ip : bindHost;
-      event.sender.send("address", {
-        ...obj,
-        ip: clientHost,
-        port: store.get("port"),
-      });
-    });
-  });
-
-  // 获取主窗口当前连接状态，避免只依赖 socket 增量事件导致初始显示过期。
-  ipcMain.on("getConnectionStatus", (event) => {
-    emitConnectionStatus(event.sender);
-  });
-
-  // 供 sandbox 化的 preload 同步读取配置/版本
-  // （sandbox 渲染进程的 preload 不能 require electron-store 或 json 文件，改走同步 IPC 保持原同步契约）
-  // 仅放行 preload 实际需要的非敏感键，杜绝渲染进程读取 token/transitToken 等凭据。
-  const STORE_GET_ALLOWED_KEYS = new Set([
-    "mainTitle", // index preload 窗口标题
-    "rePrint", // printLog preload 重打开关
-  ]);
-  ipcMain.on("hiprint:store-get", (event, key) => {
-    event.returnValue = STORE_GET_ALLOWED_KEYS.has(key)
-      ? store.get(key)
-      : undefined;
-  });
-  ipcMain.on("hiprint:app-version", (event) => {
-    event.returnValue = app.getVersion();
-  });
-  // 设置窗口所需配置快照：仅投影已知配置键，避免把整个 store（含未来新增的非设置字段）自动暴露给渲染进程
-  ipcMain.on("hiprint:settings-snapshot", (event) => {
-    const SETTINGS_SNAPSHOT_KEYS = [
-      "mainTitle",
-      "port",
-      "token",
-      "nickName",
-      "openAtLogin",
-      "openAsHidden",
-      "connectTransit",
-      "transitUrl",
-      "transitToken",
-      "allowNotify",
-      "closeType",
-      "pdfPath",
-      "defaultPrinter",
-      "disabledGpu",
-      "rePrint",
-      "bindHost",
-      "exportDirectory",
-    ];
-    const snapshot = {};
-    SETTINGS_SNAPSHOT_KEYS.forEach((key) => {
-      const value = store.get(key);
-      if (value !== undefined) snapshot[key] = value;
-    });
-    event.returnValue = snapshot;
-  });
-  // 复制到剪贴板（sandbox 渲染进程的 preload 不能直接使用 clipboard 模块，转由主进程执行）
-  ipcMain.on("hiprint:clipboard-write", (event, text) => {
-    clipboard.writeText(String(text || ""));
+    showConsole("/status");
   });
 
   // 当electron完成初始化
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     // 注册 app:// 自定义协议处理器：UI 窗口经此协议从应用内 assets/ 加载，
     // 拥有真实安全 origin，且 handler 严格限定目录、做路径穿越防护，
     // 不再使用 file:// 暴露任意本地文件系统访问。必须在加载任何窗口前注册。
     registerAssetProtocol();
-    // 创建浏览器窗口
-    createWindow();
+    // 初始化系统设置
+    systemSetup();
+    // 注册控制台全部 IPC handler（幂等，进程内单实例常驻）
+    registerConsoleIpc();
+    // 预热控制台窗口（后台隐藏建窗，避免首次点击托盘冷启动）
+    await prewarmConsole();
+    // 非 openAsHidden 启动时显示控制台
+    const openedAtLogin =
+      process.argv.includes("--openAsHidden") ||
+      (process.platform === "darwin" &&
+        app.getLoginItemSettings().wasOpenedAtLogin);
+    if (!(store.get("openAsHidden") && openedAtLogin)) {
+      showConsole("/status");
+    }
+    // 初始化托盘
+    initTray();
+    // 打印窗口初始化
+    await printSetup();
+    // 渲染窗口初始化
+    await renderSetup();
+    // 本地服务初始化
+    startLocalServices();
+    // 启动后静默检查客户端在线升级
+    if (app.isPackaged) {
+      setTimeout(() => {
+        runOnlineUpgrade({
+          parentWindow: getAppWindow(),
+          onStatus: updateOnlineUpgradeTrayState,
+          silent: true,
+        }).catch((error) => console.error("启动自动检查更新失败:", error));
+      }, 5000);
+    }
     app.on("activate", function() {
       if (BrowserWindow.getAllWindows().length === 0) {
-        createWindow();
+        showConsole("/status");
       }
     });
     console.log("==> Electron-hiprint 启动 <==");
   });
+
+  // socket server 生命周期解耦：绑到 app 退出而非控制台窗口销毁
+  app.on("before-quit", () => {
+    try { server.close(); } catch { /* 关闭异常忽略 */ }
+  });
 }
 
 /**
- * @description: 创建渲染进程 主窗口
- * @return {BrowserWindow} MAIN_WINDOW 主窗口
+ * @description: 初始化系统设置（登录项、菜单栏）
+ * @return {Void}
  */
-async function createWindow() {
-  const windowOptions = {
-    width: 500, // 窗口宽度
-    height: 300, // 窗口高度
-    title: store.get("mainTitle") || "Electron-hiprint",
-    useContentSize: true, // 窗口大小不包含边框
-    center: true, // 居中
-    resizable: false, // 禁止窗口缩放
-    show: false, // 初始隐藏
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      preload: path.join(__dirname, "src/preload/index.js"),
-    },
-  };
-
-  // 窗口左上角图标
-  if (!app.isPackaged) {
-    windowOptions.icon = path.join(__dirname, "build/icons/256x256.png");
-  } else {
+function systemSetup() {
+  // 隐藏菜单栏
+  Menu.setApplicationMenu(null);
+  // 登录项设置（仅打包环境）
+  if (app.isPackaged) {
     app.setLoginItemSettings({
       openAtLogin: store.get("openAtLogin"),
       openAsHidden: store.get("openAsHidden"),
@@ -376,114 +302,6 @@ async function createWindow() {
       args: store.get("openAsHidden") ? ["--openAsHidden"] : [],
     });
   }
-
-  // 创建主窗口
-  MAIN_WINDOW = new BrowserWindow(windowOptions);
-
-  // 添加加载页面 解决白屏的问题
-  attachLoadingView(MAIN_WINDOW, windowOptions, getAssetUrl("loading.html"));
-
-  // 初始化系统设置
-  systemSetup();
-
-  // 加载主页面
-  MAIN_WINDOW.webContents.loadURL(getAssetUrl("index.html"));
-
-  // 退出
-  MAIN_WINDOW.on("closed", () => {
-    MAIN_WINDOW = null;
-    server.close();
-  });
-
-  // 点击关闭，最小化到托盘
-  MAIN_WINDOW.on("close", (event) => {
-    if (store.get("closeType") === "tray") {
-      // 最小化到托盘
-      MAIN_WINDOW.hide();
-
-      // 隐藏任务栏
-      MAIN_WINDOW.setSkipTaskbar(true);
-
-      // 阻止窗口关闭
-      event.preventDefault();
-    } else {
-      // 销毁所有窗口、托盘、退出应用
-      helper.appQuit();
-    }
-  });
-
-  // 主窗口 Dom 加载完毕
-  MAIN_WINDOW.webContents.on("dom-ready", async () => {
-    try {
-      // openAsHidden 仅应在"随系统登录自启动"时隐藏窗口；手动启动（双击桌面图标）应正常显示。
-      // Windows 通过登录项启动参数 --openAsHidden 标记自启，macOS 用 wasOpenedAtLogin 判定。
-      const openedAtLogin =
-        process.argv.includes("--openAsHidden") ||
-        (process.platform === "darwin" &&
-          app.getLoginItemSettings().wasOpenedAtLogin);
-      if (!(store.get("openAsHidden") && openedAtLogin)) {
-        MAIN_WINDOW.show();
-      }
-      // 未打包时打开开发者工具
-      if (!app.isPackaged) {
-        MAIN_WINDOW.webContents.openDevTools();
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  });
-
-  // 初始化托盘
-  initTray();
-  // 打印窗口初始化
-  await printSetup();
-  // 渲染窗口初始化
-  await renderSetup();
-  // 本地服务初始化不依赖主窗口 DOM，避免页面加载失败导致服务不可用。
-  startLocalServices();
-
-  // 启动后静默检查客户端在线升级：仅打包环境执行，发现新版本才弹窗提示，
-  // 无新版本或检查失败时静默处理，不打扰用户。
-  if (app.isPackaged) {
-    setTimeout(() => {
-      runOnlineUpgrade({
-        parentWindow: MAIN_WINDOW,
-        onStatus: updateOnlineUpgradeTrayState,
-        silent: true,
-      }).catch((error) => console.error("启动自动检查更新失败:", error));
-    }, 5000);
-  }
-
-  return MAIN_WINDOW;
-}
-
-/**
- * @description: 初始化系统设置
- * @return {Void}
- */
-function systemSetup() {
-  // 隐藏菜单栏
-  Menu.setApplicationMenu(null);
-}
-
-/**
- * @description: 显示主窗口
- * @return {Void}
- */
-function showMainWindow() {
-  if (MAIN_WINDOW.isMinimized()) {
-    // 将窗口从最小化状态恢复到以前的状态
-    MAIN_WINDOW.restore();
-  }
-  if (!MAIN_WINDOW.isVisible()) {
-    // 主窗口关闭不会被销毁，只是隐藏，重新显示即可
-    MAIN_WINDOW.show();
-  }
-  if (!MAIN_WINDOW.isFocused()) {
-    // 主窗口未聚焦，使其聚焦
-    MAIN_WINDOW.focus();
-  }
-  MAIN_WINDOW.setSkipTaskbar(false);
 }
 
 /**
@@ -500,10 +318,10 @@ function initTray() {
 
   refreshTrayMenu();
 
-  // 监听点击事件
+  // 监听点击事件（linux 上无法识别 tray click/double-click，菜单项"显示主窗口"兜底）
   APP_TRAY.on("click", function() {
     console.log("==>TRAY 点击托盘图标<==");
-    showMainWindow();
+    showConsole("/status");
   });
   return APP_TRAY;
 }
@@ -514,36 +332,28 @@ function buildTrayMenuTemplate() {
       // 神知道为什么 linux 上无法识别 tray click、double-click，只能添加一个菜单
       label: "显示主窗口",
       click: () => {
-        showMainWindow();
+        showConsole("/status");
       },
     },
     {
       label: "设置",
       click: () => {
         console.log("==>TRAY 打开设置窗口<==");
-        openSetWindow();
+        showConsole("/settings");
       },
     },
     {
       label: "软件日志",
       click: () => {
         console.log("==>TRAY 查看软件日志<==");
-        if (!SOFTWARE_LOG_WINDOW) {
-          softwareLogSetup();
-        } else {
-          SOFTWARE_LOG_WINDOW.show();
-        }
+        showConsole("/software-log");
       },
     },
     {
       label: "打印记录",
       click: () => {
         console.log("==>TRAY 打开打印记录窗口<==");
-        if (!PRINT_LOG_WINDOW) {
-          printLogSetup();
-        } else {
-          PRINT_LOG_WINDOW.show();
-        }
+        showConsole("/print-log");
       },
     },
     {
@@ -552,7 +362,7 @@ function buildTrayMenuTemplate() {
       click: () => {
         console.log("==>TRAY 在线升级<==");
         runOnlineUpgrade({
-          parentWindow: MAIN_WINDOW,
+          parentWindow: getAppWindow(),
           onStatus: updateOnlineUpgradeTrayState,
         });
       },
@@ -576,6 +386,7 @@ function buildTrayMenuTemplate() {
       label: "退出",
       click: () => {
         console.log("==>TRAY 退出应用<==");
+        destroyConsole();
         helper.appQuit();
       },
     },
@@ -583,8 +394,9 @@ function buildTrayMenuTemplate() {
 }
 
 function restartApp() {
+  destroyConsole();
   app.relaunch();
-  helper.appQuit();
+  app.exit();
 }
 
 function updateOnlineUpgradeTrayState(status) {
@@ -600,19 +412,6 @@ function refreshTrayMenu() {
   if (APP_TRAY) {
     APP_TRAY.setContextMenu(Menu.buildFromTemplate(buildTrayMenuTemplate()));
   }
-}
-
-/**
- * @description: 打开设置窗口
- * @return {BrowserWindow} SET_WINDOW 设置窗口
- */
-async function openSetWindow() {
-  if (!SET_WINDOW) {
-    await setSetup();
-  } else {
-    SET_WINDOW.show();
-  }
-  return SET_WINDOW;
 }
 
 // 把 app:// 注册为标准 + 安全来源。registerSchemesAsPrivileged 必须在 app ready 之前、
