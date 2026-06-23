@@ -12,7 +12,8 @@ const path = require("path");
 const fs = require("fs");
 const { spawnSync } = require("child_process");
 
-const WINDOWS = ["index", "set", "printLog", "softwareLog", "render"];
+// L3 重构完成：index/set/printLog/softwareLog 已合并为 console 单页，旧入口已删除。
+const WINDOWS = ["console", "render"];
 
 const assetsDir = path.resolve(__dirname, "../assets");
 
