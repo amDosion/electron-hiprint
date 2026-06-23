@@ -132,7 +132,7 @@ onMounted(() => {
         <div class="hero-card">
           <div class="hero-main">
             <div class="field-label">服务地址 SERVICE URL</div>
-            <span class="hero-value" :title="ipAddress" @click="handleCopy(ipAddress)">
+            <span class="hero-value" :title="privateData(ipAddress)" @click="handleCopy(ipAddress)">
               {{ privateData(ipAddress) }}
             </span>
           </div>
@@ -171,7 +171,7 @@ onMounted(() => {
           <div class="tile">
             <div class="tile-body">
               <div class="tile-label">设备编号</div>
-              <div class="tile-value is-mono" :title="deviceId" @click="handleCopy(deviceId)">
+              <div class="tile-value is-mono" :title="privateData(deviceId)" @click="handleCopy(deviceId)">
                 {{ privateData(deviceId) }}
               </div>
             </div>
@@ -181,7 +181,7 @@ onMounted(() => {
 
       <!-- 底栏：MAC + 版本 -->
       <div class="app-footer">
-        <span class="footer-mac" :title="macAddress" @click="handleCopy(macAddress)">
+        <span class="footer-mac" :title="privateData(macAddress)" @click="handleCopy(macAddress)">
           MAC&nbsp;&nbsp;{{ privateData(macAddress) }}
         </span>
         <span class="footer-ver">v{{ version }}</span>
