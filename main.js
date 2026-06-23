@@ -243,12 +243,31 @@ async function initialize() {
     }
     // 初始化托盘
     initTray();
-    // 打印窗口初始化
-    await printSetup();
-    // 渲染窗口初始化
-    await renderSetup();
-    // 本地服务初始化
-    startLocalServices();
+    // 打印/渲染窗口与本地服务推迟到控制台加载完成后再启动：
+    // console(1.1MB 全量 element-plus) 与 render(1.77MB) 若在启动时并发冷启动，会争抢
+    // CPU/GPU/磁盘 IO，令 console dom-ready 从 ~1.7s 恶化到 ~13s（且 line 242 启动即 show，
+    // 用户直接盯着 loading 13 秒）。串行化后 console 优先独占资源加载，render/print 在其
+    // 就绪后建、首次打印前已就绪。见 .investigations/2026-06-23-log-window-domready-installed-vs-repo.md。
+    const consoleWin = getAppWindow();
+    let backgroundStarted = false;
+    const startBackgroundWindows = () => {
+      if (backgroundStarted) return;
+      backgroundStarted = true;
+      (async () => {
+        await printSetup();
+        await renderSetup();
+        startLocalServices();
+      })().catch((error) =>
+        console.error("后台窗口/本地服务初始化失败:", error),
+      );
+    };
+    if (consoleWin && consoleWin.webContents.isLoading()) {
+      consoleWin.webContents.once("did-finish-load", startBackgroundWindows);
+      // 兜底：console 加载异常/卡住也要启动打印服务，不让打印永久不可用
+      setTimeout(startBackgroundWindows, 15000);
+    } else {
+      startBackgroundWindows();
+    }
     // 启动后静默检查客户端在线升级
     if (app.isPackaged) {
       setTimeout(() => {
