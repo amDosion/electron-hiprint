@@ -11,8 +11,8 @@ import ConfirmDialog from '@/shared/ConfirmDialog.vue'
 // .investigations/2026-06-17-log-window-dom-ready-full-element-plus.md 第 12 节）。
 // IPC 契约（request-logs / clear-logs / reprint 负载结构、sort.order 取值 ascending/descending）保持不变。
 
-// Electron preload 桥接（src/preload/printLog.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
-const ipc = requireBridge(window.hiprintPrintLog, 'hiprintPrintLog', 'preload/printLog.js')
+// Electron preload 桥接（src/preload/console.js，合并桥）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintPrintLog, 'hiprintPrintLog', 'preload/console.js')
 
 // rePrint 总开关（preload 启动时同步读取，全程不变）
 const rePrintAble = ipc.rePrintAble
@@ -164,218 +164,183 @@ onMounted(() => {
 </script>
 
 <template>
-  <!-- 筛选卡片 -->
-  <div class="search-form">
-    <div class="search-container">
-      <div class="filter-item filter-time">
-        <span class="filter-label">时间：</span>
-        <input class="pl-ctrl pl-dt" type="datetime-local" step="1" v-model="searchData.startTime" />
-        <span class="dt-sep">至</span>
-        <input class="pl-ctrl pl-dt" type="datetime-local" step="1" v-model="searchData.endTime" />
-      </div>
+  <div class="cv-print-log">
+    <!-- 筛选卡片 -->
+    <div class="search-form">
+      <div class="search-container">
+        <div class="filter-item filter-time">
+          <span class="filter-label">时间：</span>
+          <input class="pl-ctrl pl-dt" type="datetime-local" step="1" v-model="searchData.startTime" />
+          <span class="dt-sep">至</span>
+          <input class="pl-ctrl pl-dt" type="datetime-local" step="1" v-model="searchData.endTime" />
+        </div>
 
-      <div class="filter-item filter-select">
-        <span class="filter-label">连接类型：</span>
-        <select class="pl-ctrl pl-select" v-model="searchData.clientType">
-          <option value="">请选择</option>
-          <option value="local">本地</option>
-          <option value="transit">中转</option>
-        </select>
-      </div>
+        <div class="filter-item filter-select">
+          <span class="filter-label">连接类型：</span>
+          <select class="pl-ctrl pl-select" v-model="searchData.clientType">
+            <option value="">请选择</option>
+            <option value="local">本地</option>
+            <option value="transit">中转</option>
+          </select>
+        </div>
 
-      <div class="filter-item filter-select">
-        <span class="filter-label">状态：</span>
-        <select class="pl-ctrl pl-select" v-model="searchData.status">
-          <option value="">请选择</option>
-          <option value="success">成功</option>
-          <option value="failed">失败</option>
-        </select>
-      </div>
+        <div class="filter-item filter-select">
+          <span class="filter-label">状态：</span>
+          <select class="pl-ctrl pl-select" v-model="searchData.status">
+            <option value="">请选择</option>
+            <option value="success">成功</option>
+            <option value="failed">失败</option>
+          </select>
+        </div>
 
-      <div class="search-btns">
-        <button class="pl-btn pl-btn-primary" type="button" @click="fetchLogs">搜索</button>
-        <button class="pl-btn pl-btn-danger" type="button" @click="clearLogs">清空</button>
+        <div class="search-btns">
+          <button class="pl-btn pl-btn-primary" type="button" @click="fetchLogs">搜索</button>
+          <button class="pl-btn pl-btn-danger" type="button" @click="clearLogs">清空</button>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- 表格 -->
-  <div class="table-wrap">
-    <table class="table">
-      <colgroup>
-        <col style="width: 6%" />
-        <col style="width: 15%" />
-        <col style="width: 9%" />
-        <col style="width: 15%" />
-        <col style="width: 11%" />
-        <col style="width: 7%" />
-        <col style="width: 9%" />
-        <col style="width: 17%" />
-        <col style="width: 11%" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>序号</th>
-          <th class="sortable" :class="sortClass('timestamp')" @click="onSort('timestamp')">
-            <span class="th-inner">时间<i class="caret"></i></span>
-          </th>
-          <th class="sortable" :class="sortClass('clientType')" @click="onSort('clientType')">
-            <span class="th-inner">连接类型<i class="caret"></i></span>
-          </th>
-          <th>打印机</th>
-          <th>模板 ID</th>
-          <th>页数</th>
-          <th class="sortable" :class="sortClass('status')" @click="onSort('status')">
-            <span class="th-inner">状态<i class="caret"></i></span>
-          </th>
-          <th>错误信息</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="(row, idx) in logs" :key="row.id ?? idx">
-          <td class="td-center">{{ indexNo(idx) }}</td>
-          <td class="td-center">{{ fmtTime(row.timestamp) }}</td>
-          <td class="td-center">
-            <span class="type-pill" :class="'type-' + row.clientType">
-              {{ row.clientType === 'local' ? '本地' : '中转' }}
-            </span>
-          </td>
-          <td class="cell td-ellipsis" :title="String(row.printer ?? '')">{{ row.printer }}</td>
-          <td class="cell td-ellipsis" :title="String(row.templateId ?? '')">{{ row.templateId }}</td>
-          <td class="td-center">{{ row.pageNum }}页</td>
-          <td class="cell td-center">
-            <span class="status-pill" :class="'status-' + row.status">
-              <span class="pill-dot"></span>{{ row.status === 'success' ? '成功' : '失败' }}
-            </span>
-          </td>
-          <td class="cell td-ellipsis" :title="String(row.errorMessage ?? '')">{{ row.errorMessage }}</td>
-          <td class="td-center">
-            <button
-              class="reprint-btn"
-              type="button"
-              :disabled="row.rePrintAble === 0 || !rePrintAble"
-              @click="handleRePrint(row)"
-            >
-              重打
-            </button>
-          </td>
-        </tr>
-        <tr v-if="!logs.length" class="empty-row">
-          <td colspan="9">暂无数据</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+    <!-- 表格 -->
+    <div class="table-wrap">
+      <table class="table">
+        <colgroup>
+          <col style="width: 6%" />
+          <col style="width: 15%" />
+          <col style="width: 9%" />
+          <col style="width: 15%" />
+          <col style="width: 11%" />
+          <col style="width: 7%" />
+          <col style="width: 9%" />
+          <col style="width: 17%" />
+          <col style="width: 11%" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>序号</th>
+            <th class="sortable" :class="sortClass('timestamp')" @click="onSort('timestamp')">
+              <span class="th-inner">时间<i class="caret"></i></span>
+            </th>
+            <th class="sortable" :class="sortClass('clientType')" @click="onSort('clientType')">
+              <span class="th-inner">连接类型<i class="caret"></i></span>
+            </th>
+            <th>打印机</th>
+            <th>模板 ID</th>
+            <th>页数</th>
+            <th class="sortable" :class="sortClass('status')" @click="onSort('status')">
+              <span class="th-inner">状态<i class="caret"></i></span>
+            </th>
+            <th>错误信息</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(row, idx) in logs" :key="row.id ?? idx">
+            <td class="td-center">{{ indexNo(idx) }}</td>
+            <td class="td-center">{{ fmtTime(row.timestamp) }}</td>
+            <td class="td-center">
+              <span class="type-pill" :class="'type-' + row.clientType">
+                {{ row.clientType === 'local' ? '本地' : '中转' }}
+              </span>
+            </td>
+            <td class="cell td-ellipsis" :title="String(row.printer ?? '')">{{ row.printer }}</td>
+            <td class="cell td-ellipsis" :title="String(row.templateId ?? '')">{{ row.templateId }}</td>
+            <td class="td-center">{{ row.pageNum }}页</td>
+            <td class="cell td-center">
+              <span class="status-pill" :class="'status-' + row.status">
+                <span class="pill-dot"></span>{{ row.status === 'success' ? '成功' : '失败' }}
+              </span>
+            </td>
+            <td class="cell td-ellipsis" :title="String(row.errorMessage ?? '')">{{ row.errorMessage }}</td>
+            <td class="td-center">
+              <button
+                class="reprint-btn"
+                type="button"
+                :disabled="row.rePrintAble === 0 || !rePrintAble"
+                @click="handleRePrint(row)"
+              >
+                重打
+              </button>
+            </td>
+          </tr>
+          <tr v-if="!logs.length" class="empty-row">
+            <td colspan="9">暂无数据</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-  <!-- 分页 -->
-  <div class="pagination">
-    <select class="pl-ctrl pl-page-size" v-model.number="pageSize" @change="handleSizeChange">
-      <option :value="20">20 条/页</option>
-      <option :value="50">50 条/页</option>
-      <option :value="100">100 条/页</option>
-      <option :value="200">200 条/页</option>
-    </select>
-    <button class="pager-btn" type="button" :disabled="currentPage <= 1" @click="goPage(currentPage - 1)">
-      ‹
-    </button>
-    <template v-for="(item, i) in pageItems" :key="i">
+    <!-- 分页 -->
+    <div class="pagination">
+      <select class="pl-ctrl pl-page-size" v-model.number="pageSize" @change="handleSizeChange">
+        <option :value="20">20 条/页</option>
+        <option :value="50">50 条/页</option>
+        <option :value="100">100 条/页</option>
+        <option :value="200">200 条/页</option>
+      </select>
+      <button class="pager-btn" type="button" :disabled="currentPage <= 1" @click="goPage(currentPage - 1)">
+        ‹
+      </button>
+      <template v-for="(item, i) in pageItems" :key="i">
+        <button
+          v-if="typeof item === 'number'"
+          class="pager-btn"
+          :class="{ active: item === currentPage }"
+          type="button"
+          @click="goPage(item)"
+        >
+          {{ item }}
+        </button>
+        <button
+          v-else
+          class="pager-btn pager-dots"
+          type="button"
+          title="快速翻页"
+          @click="goPage(currentPage + (item === 'l-dots' ? -5 : 5))"
+        >
+          …
+        </button>
+      </template>
       <button
-        v-if="typeof item === 'number'"
         class="pager-btn"
-        :class="{ active: item === currentPage }"
         type="button"
-        @click="goPage(item)"
+        :disabled="currentPage >= pageCount"
+        @click="goPage(currentPage + 1)"
       >
-        {{ item }}
+        ›
       </button>
-      <button
-        v-else
-        class="pager-btn pager-dots"
-        type="button"
-        title="快速翻页"
-        @click="goPage(currentPage + (item === 'l-dots' ? -5 : 5))"
-      >
-        …
-      </button>
-    </template>
-    <button
-      class="pager-btn"
-      type="button"
-      :disabled="currentPage >= pageCount"
-      @click="goPage(currentPage + 1)"
-    >
-      ›
-    </button>
-    <span class="pager-jump">
-      跳至
-      <input type="number" min="1" v-model="jumpValue" @keyup.enter="handleJump" />
-      页
-    </span>
-    <span class="pager-total">共 {{ total }} 条</span>
-  </div>
+      <span class="pager-jump">
+        跳至
+        <input type="number" min="1" v-model="jumpValue" @keyup.enter="handleJump" />
+        页
+      </span>
+      <span class="pager-total">共 {{ total }} 条</span>
+    </div>
 
-  <!-- 清空确认（共享浮层，替代 ElMessageBox，不触发阻塞式系统弹窗） -->
-  <ConfirmDialog
-    :visible="clearConfirmVisible"
-    message="确定要清空日志吗？"
-    @confirm="confirmClear"
-    @cancel="clearConfirmVisible = false"
-  />
+    <!-- 清空确认（共享浮层，替代 ElMessageBox，不触发阻塞式系统弹窗） -->
+    <ConfirmDialog
+      :visible="clearConfirmVisible"
+      message="确定要清空日志吗？"
+      @confirm="confirmClear"
+      @cancel="clearConfirmVisible = false"
+    />
+  </div>
 </template>
 
 <style>
 /* ============================================================
-   打印日志 · 浅色主题视觉（原生控件实现，无 element-plus）。
-   仅表现层：布局/配色/卡片/状态徽章/分页。逻辑与 IPC 通道未改。
+   打印记录视图 · 命名空间 .cv-print-log（SPA 路由视图，无全局规则）
    ============================================================ */
-:root {
-  --pl-brand: #3358e0;
-  --pl-brand-soft: #eaf0fe;
-  --pl-brand-grad: linear-gradient(135deg, #4f7bff 0%, #3358e0 100%);
-  --pl-success: #16a34a;
-  --pl-success-soft: #e7f6ec;
-  --pl-success-text: #16823c;
-  --pl-warning: #b5740f;
-  --pl-warning-soft: #fef3e2;
-  --pl-danger: #dc2626;
-  --pl-danger-soft: #fdecec;
-  --pl-text: #1a2233;
-  --pl-text-2: #5b6472;
-  --pl-text-3: #9aa3b2;
-  --pl-border: #e6e9f0;
-  --pl-page: #f4f6fa;
-  --pl-card: #ffffff;
-  --pl-header: #f7f9fc;
-  --pl-radius-card: 12px;
-  --pl-radius-ctrl: 8px;
-  --pl-font: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
-  --pl-mono: "Cascadia Mono", "Consolas", monospace;
-  --pl-shadow: 0 1px 3px rgba(26, 34, 51, 0.06), 0 8px 24px rgba(26, 34, 51, 0.05);
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
-  background: var(--pl-page);
-  color: var(--pl-text);
-  font-family: var(--pl-font);
-  -webkit-font-smoothing: antialiased;
-}
-
-/* 纵向布局：窗口自身不滚动；搜索卡与分页固定，表格区占据剩余空间并在内部滚动。 */
-#app {
-  height: 100vh;
-  padding: 16px;
-  box-sizing: border-box;
+.cv-print-log {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
   overflow: hidden;
 }
 
 /* ---------------- 原生表单控件统一外观 ---------------- */
-.pl-ctrl {
+.cv-print-log .pl-ctrl {
   height: 30px;
   box-sizing: border-box;
   padding: 0 10px;
@@ -389,17 +354,16 @@ body {
   transition: box-shadow 0.15s ease;
 }
 
-.pl-ctrl:hover {
+.cv-print-log .pl-ctrl:hover {
   box-shadow: 0 0 0 1px #c5cbd8 inset;
 }
 
-.pl-ctrl:focus {
+.cv-print-log .pl-ctrl:focus {
   outline: none;
   box-shadow: 0 0 0 1px var(--pl-brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
 }
 
-/* 下拉框：去系统箭头 + data-uri chevron。 */
-.pl-select {
+.cv-print-log .pl-select {
   padding-right: 28px;
   cursor: pointer;
   appearance: none;
@@ -410,17 +374,16 @@ body {
   background-size: 12px 12px;
 }
 
-/* 控件宽度收紧：两个 datetime-local + 两个 select + 操作按钮需同处一行（见 scroll-layout 回归）。 */
-.pl-select {
+.cv-print-log .pl-select {
   width: 114px;
 }
 
-.pl-dt {
+.cv-print-log .pl-dt {
   width: 164px;
 }
 
 /* ---------------- 筛选卡片 ---------------- */
-.search-form {
+.cv-print-log .search-form {
   flex: 0 0 auto;
   background: var(--pl-card);
   border: 1px solid var(--pl-border);
@@ -430,8 +393,7 @@ body {
   margin-bottom: 16px;
 }
 
-/* 顶部筛选栏：单行，左侧筛选项 + 右侧操作按钮，垂直居中、不换行。 */
-.search-container {
+.cv-print-log .search-container {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -439,7 +401,7 @@ body {
   gap: 10px 14px;
 }
 
-.filter-item {
+.cv-print-log .filter-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -447,20 +409,19 @@ body {
   min-width: 0;
 }
 
-.filter-label {
+.cv-print-log .filter-label {
   color: var(--pl-text-2);
   font-weight: 500;
   font-size: 13px;
   white-space: nowrap;
 }
 
-.dt-sep {
+.cv-print-log .dt-sep {
   color: var(--pl-text-3);
   font-size: 12px;
 }
 
-/* 操作按钮：推到筛选栏右端 */
-.search-btns {
+.cv-print-log .search-btns {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
@@ -468,7 +429,7 @@ body {
   flex: 0 0 auto;
 }
 
-.pl-btn {
+.cv-print-log .pl-btn {
   height: 30px;
   padding: 0 16px;
   border-radius: var(--pl-radius-ctrl);
@@ -483,11 +444,11 @@ body {
     border-color 0.15s ease, color 0.15s ease;
 }
 
-.pl-btn:hover {
+.cv-print-log .pl-btn:hover {
   border-color: #c5cbd8;
 }
 
-.pl-btn-primary {
+.cv-print-log .pl-btn-primary {
   background: var(--pl-brand-grad);
   border: none;
   color: #fff;
@@ -495,34 +456,32 @@ body {
   box-shadow: 0 2px 6px rgba(51, 88, 224, 0.25);
 }
 
-.pl-btn-primary:hover {
+.cv-print-log .pl-btn-primary:hover {
   filter: brightness(1.06);
   box-shadow: 0 3px 10px rgba(51, 88, 224, 0.32);
 }
 
-.pl-btn-primary:active {
+.cv-print-log .pl-btn-primary:active {
   filter: brightness(0.96);
 }
 
-.pl-btn-danger {
+.cv-print-log .pl-btn-danger {
   background: var(--pl-card);
   border: 1px solid #f2c2c2;
   color: var(--pl-danger);
 }
 
-.pl-btn-danger:hover {
+.cv-print-log .pl-btn-danger:hover {
   background: var(--pl-danger-soft);
   border-color: var(--pl-danger);
 }
 
-.pl-btn-danger:active {
+.cv-print-log .pl-btn-danger:active {
   background: #fbdada;
 }
 
 /* ---------------- 表格 ---------------- */
-/* 表格区占据搜索卡与分页之间的剩余高度；min-height:0 允许其在 flex 容器内收缩，
-   由本容器（而非整窗）纵向滚动；横向恒不滚动（table-layout:fixed + colgroup 百分比列宽）。 */
-.table-wrap {
+.cv-print-log .table-wrap {
   flex: 1 1 auto;
   min-height: 0;
   margin-bottom: 12px;
@@ -534,15 +493,15 @@ body {
   background: var(--pl-card);
 }
 
-.table {
+.cv-print-log .table {
   width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
   color: var(--pl-text);
 }
 
-.table th,
-.table td {
+.cv-print-log .table th,
+.cv-print-log .table td {
   padding: 6px 8px;
   text-align: left;
   font-size: 13px;
@@ -552,8 +511,7 @@ body {
   text-overflow: ellipsis;
 }
 
-/* 表头：粘性吸顶（在 .table-wrap 内部滚动时不随表体移动）。 */
-.table thead th {
+.cv-print-log .table thead th {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -565,28 +523,27 @@ body {
   border-bottom: 1px solid var(--pl-border);
 }
 
-.td-center {
+.cv-print-log .td-center {
   text-align: center;
 }
 
-.td-ellipsis {
+.cv-print-log .td-ellipsis {
   word-break: break-all;
 }
 
-/* 排序表头：可点击 + 上下三角，方向高亮品牌色。 */
-.table th.sortable {
+.cv-print-log .table th.sortable {
   cursor: pointer;
   user-select: none;
   text-align: center;
 }
 
-.th-inner {
+.cv-print-log .th-inner {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.caret {
+.cv-print-log .caret {
   position: relative;
   display: inline-block;
   width: 0;
@@ -595,8 +552,8 @@ body {
   vertical-align: middle;
 }
 
-.caret::before,
-.caret::after {
+.cv-print-log .caret::before,
+.cv-print-log .caret::after {
   content: "";
   position: absolute;
   left: -4px;
@@ -604,46 +561,45 @@ body {
   border-right: 4px solid transparent;
 }
 
-.caret::before {
+.cv-print-log .caret::before {
   top: 1px;
   border-bottom: 5px solid #c0c4cc;
 }
 
-.caret::after {
+.cv-print-log .caret::after {
   bottom: 1px;
   border-top: 5px solid #c0c4cc;
 }
 
-.table th.sortable.asc .caret::before {
+.cv-print-log .table th.sortable.asc .caret::before {
   border-bottom-color: var(--pl-brand);
 }
 
-.table th.sortable.desc .caret::after {
+.cv-print-log .table th.sortable.desc .caret::after {
   border-top-color: var(--pl-brand);
 }
 
-/* 斑马纹 + hover */
-.table tbody tr:nth-child(even) td {
+.cv-print-log .table tbody tr:nth-child(even) td {
   background: #fbfcfe;
 }
 
-.table tbody tr:hover td {
+.cv-print-log .table tbody tr:hover td {
   background-color: var(--pl-brand-soft);
 }
 
-.empty-row td {
+.cv-print-log .empty-row td {
   text-align: center;
   color: var(--pl-text-3);
   padding: 28px 0;
   font-size: 13px;
 }
 
-.empty-row:hover td {
+.cv-print-log .empty-row:hover td {
   background: transparent;
 }
 
 /* ---------------- 重打按钮（操作列） ---------------- */
-.reprint-btn {
+.cv-print-log .reprint-btn {
   padding: 4px 12px;
   border: none;
   border-radius: 7px;
@@ -656,19 +612,19 @@ body {
   transition: background 0.15s ease, color 0.15s ease;
 }
 
-.reprint-btn:hover:not(:disabled) {
+.cv-print-log .reprint-btn:hover:not(:disabled) {
   background: #dbe5fd;
 }
 
-.reprint-btn:disabled {
+.cv-print-log .reprint-btn:disabled {
   background: transparent;
   color: #c0c4cc;
   cursor: not-allowed;
 }
 
 /* ---------------- 状态 / 类型 语义徽章 ---------------- */
-.status-pill,
-.type-pill {
+.cv-print-log .status-pill,
+.cv-print-log .type-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -682,39 +638,39 @@ body {
   font-family: var(--pl-font);
 }
 
-.pill-dot {
+.cv-print-log .pill-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   flex: 0 0 auto;
 }
 
-.status-pill.status-success {
+.cv-print-log .status-pill.status-success {
   background: var(--pl-success-soft);
   color: var(--pl-success-text);
 }
-.status-pill.status-success .pill-dot {
+.cv-print-log .status-pill.status-success .pill-dot {
   background: var(--pl-success);
 }
-.status-pill.status-failed {
+.cv-print-log .status-pill.status-failed {
   background: var(--pl-danger-soft);
   color: #c0392b;
 }
-.status-pill.status-failed .pill-dot {
+.cv-print-log .status-pill.status-failed .pill-dot {
   background: var(--pl-danger);
 }
 
-.type-pill.type-local {
+.cv-print-log .type-pill.type-local {
   background: var(--pl-brand-soft);
   color: var(--pl-brand);
 }
-.type-pill.type-transit {
+.cv-print-log .type-pill.type-transit {
   background: var(--pl-warning-soft);
   color: var(--pl-warning);
 }
 
 /* ---------------- 分页 ---------------- */
-.pagination {
+.cv-print-log .pagination {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -722,12 +678,12 @@ body {
   color: var(--pl-text-2);
 }
 
-.pl-page-size {
+.cv-print-log .pl-page-size {
   height: 30px;
   width: 100px;
 }
 
-.pager-btn {
+.cv-print-log .pager-btn {
   min-width: 30px;
   height: 30px;
   padding: 0 6px;
@@ -742,28 +698,28 @@ body {
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
-.pager-btn:hover:not(:disabled) {
+.cv-print-log .pager-btn:hover:not(:disabled) {
   border-color: var(--pl-brand);
   color: var(--pl-brand);
 }
 
-.pager-btn:disabled {
+.cv-print-log .pager-btn:disabled {
   color: #c0c4cc;
   cursor: not-allowed;
 }
 
-.pager-btn.active {
+.cv-print-log .pager-btn.active {
   background: var(--pl-brand-grad);
   border-color: transparent;
   color: #fff;
 }
 
-.pager-dots {
+.cv-print-log .pager-dots {
   border-color: transparent;
   background: transparent;
 }
 
-.pager-jump {
+.cv-print-log .pager-jump {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -771,7 +727,7 @@ body {
   color: var(--pl-text-3);
 }
 
-.pager-jump input {
+.cv-print-log .pager-jump input {
   width: 44px;
   height: 30px;
   box-sizing: border-box;
@@ -786,12 +742,12 @@ body {
   font-size: 13px;
 }
 
-.pager-jump input:focus {
+.cv-print-log .pager-jump input:focus {
   outline: none;
   box-shadow: 0 0 0 1px var(--pl-brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
 }
 
-.pager-total {
+.cv-print-log .pager-total {
   margin-left: auto;
   font-size: 13px;
   color: var(--pl-text-3);

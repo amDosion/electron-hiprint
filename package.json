@@ -1,6 +1,6 @@
 {
   "name": "electron-hiprint",
-  "version": "1.0.89",
+  "version": "1.0.90",
   "description": "vue3-print client",
   "main": "main.js",
   "author": "CcSimple<840054486@qq.com>",
@@ -154,6 +154,7 @@
     "vite": "^7.3.5",
     "vite-plugin-singlefile": "^2.3.3",
     "vue": "^3.5.35",
+    "vue-router": "^5.1.0",
     "vue-tsc": "^3.3.4"
   }
 }

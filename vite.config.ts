@@ -19,11 +19,10 @@ import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
 const rendererRoot = resolve(__dirname, "src/renderer");
 
 // 已移植为 SFC 的窗口入口表。新增窗口在此登记即可。
+// L3 重构完成：index/set/printLog/softwareLog 四窗口已合并为 console 单页，旧入口已删除。
 const WINDOW_ENTRIES: Record<string, string> = {
-  index: resolve(rendererRoot, "index.html"),
-  set: resolve(rendererRoot, "set.html"),
-  printLog: resolve(rendererRoot, "printLog.html"),
-  softwareLog: resolve(rendererRoot, "softwareLog.html"),
+  // 控制台单页（L3 重构：合并 index/set/printLog/softwareLog 四窗口）
+  console: resolve(rendererRoot, "console.html"),
   // 打印渲染窗口（非 Vue 纯 TS 入口）：经 ESM 内联消费 @amdosion/vue3-print，取代旧 runtime.js。
   render: resolve(rendererRoot, "render.html"),
 };

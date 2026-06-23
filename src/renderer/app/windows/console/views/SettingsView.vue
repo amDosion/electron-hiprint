@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { requireBridge } from '@/shared/bridge'
 
-// Electron preload 桥接（src/preload/set.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
-const ipc = requireBridge(window.hiprintSet, 'hiprintSet', 'preload/set.js')
+// Electron preload 桥接（src/preload/console.js，合并桥）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintSet, 'hiprintSet', 'preload/console.js')
+
+const router = useRouter()
 
 interface FormItem {
   label: string
@@ -136,17 +139,10 @@ const tabs = [
   { label: '高级设置', name: 'advancedSet' },
 ]
 
-// 通知主进程按当前内容自适应窗口尺寸（切 tab / 切换开关后内容高度变化）
+// setContentSize 相关逻辑已删除：统一窗口不再按内容改尺寸。
+// 原 handleTabChange 中的 ipc.send('setContentSize', ...) 与 document.querySelector('#app') 量高代码均移除。
 function handleTabChange(): void {
-  nextTick(() => {
-    const el = document.querySelector('#app')
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    ipc.send('setContentSize', {
-      width: Math.ceil(rect.width),
-      height: Math.ceil(rect.height),
-    })
-  })
+  // 切 tab 不再通知主进程改窗口尺寸，SPA 内容区自适应
 }
 
 function handleTest(): void {
@@ -193,7 +189,8 @@ function submit(): void {
 }
 
 function close(): void {
-  ipc.send('closeSetWindow')
+  // 统一窗口内：返回上一路由，不再关闭独立设置窗口
+  router.back()
 }
 
 function getPrintersList(): void {
@@ -435,10 +432,6 @@ ipc.on('testTransitResult', (_event, result) => {
 
 getPrintersList()
 
-onMounted(() => {
-  handleTabChange()
-})
-
 onBeforeUnmount(() => {
   ipc.removeAllListeners('getPrintersList')
   ipc.removeAllListeners('openDialog')
@@ -447,131 +440,99 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <el-tabs v-model="setTab" @tab-click="handleTabChange">
-    <el-tab-pane v-for="tab in tabs" :key="tab.name" :label="tab.label" :name="tab.name" />
-  </el-tabs>
-  <el-form ref="formRef" :model="formData" :rules="rules" size="small" label-position="top" :inline="true">
-    <el-row :gutter="12">
-      <template v-for="item in formOptions.items" :key="item.prop || item.label">
-        <el-col v-if="item.display !== false" :span="item.span || 24">
-          <el-form-item :label="item.label" :prop="item.prop" :style="item.style">
-            <template #label>
-              <el-tooltip v-if="item.tips" :content="item.tips" placement="top-start">
-                <span>{{ item.label }} <el-icon class="el-icon-question"><question-filled /></el-icon></span>
-              </el-tooltip>
-              <span v-else>{{ item.label }}</span>
-            </template>
-            <component
-              v-if="item.optionIs"
-              :is="item.is"
-              v-model="formData[item.prop as string]"
-              v-bind="item.attrs"
-              v-on="item.event"
-            >
+  <div class="cv-settings">
+    <el-tabs v-model="setTab" @tab-click="handleTabChange">
+      <el-tab-pane v-for="tab in tabs" :key="tab.name" :label="tab.label" :name="tab.name" />
+    </el-tabs>
+    <el-form ref="formRef" :model="formData" :rules="rules" size="small" label-position="top" :inline="true">
+      <el-row :gutter="12">
+        <template v-for="item in formOptions.items" :key="item.prop || item.label">
+          <el-col v-if="item.display !== false" :span="item.span || 24">
+            <el-form-item :label="item.label" :prop="item.prop" :style="item.style">
+              <template #label>
+                <el-tooltip v-if="item.tips" :content="item.tips" placement="top-start">
+                  <span>{{ item.label }} <el-icon class="el-icon-question"><question-filled /></el-icon></span>
+                </el-tooltip>
+                <span v-else>{{ item.label }}</span>
+              </template>
               <component
-                v-for="(option, oi) in item.options"
-                :is="item.optionIs"
-                :key="oi"
-                v-bind="option"
+                v-if="item.optionIs"
+                :is="item.is"
+                v-model="formData[item.prop as string]"
+                v-bind="item.attrs"
+                v-on="item.event"
               >
-                {{ option.content || option.value }}
+                <component
+                  v-for="(option, oi) in item.options"
+                  :is="item.optionIs"
+                  :key="oi"
+                  v-bind="option"
+                >
+                  {{ option.content || option.value }}
+                </component>
               </component>
-            </component>
-            <component
-              v-else-if="item.prop"
-              :is="item.is"
-              v-model="formData[item.prop as string]"
-              v-bind="item.attrs"
-              v-on="item.event"
-            >
-              {{ item.content }}
-            </component>
-            <component v-else :is="item.is" v-bind="item.attrs" v-on="item.event">
-              {{ item.content }}
-            </component>
+              <component
+                v-else-if="item.prop"
+                :is="item.is"
+                v-model="formData[item.prop as string]"
+                v-bind="item.attrs"
+                v-on="item.event"
+              >
+                {{ item.content }}
+              </component>
+              <component v-else :is="item.is" v-bind="item.attrs" v-on="item.event">
+                {{ item.content }}
+              </component>
+            </el-form-item>
+          </el-col>
+        </template>
+        <el-col :span="24">
+          <el-form-item>
+            <el-row :gutter="12" style="width: 100%">
+              <el-col :span="12">
+                <el-button type="primary" size="small" @click="submit">应用</el-button>
+              </el-col>
+              <el-col :span="12">
+                <el-button size="small" @click="close">关闭</el-button>
+              </el-col>
+            </el-row>
           </el-form-item>
         </el-col>
-      </template>
-      <el-col :span="24">
-        <el-form-item>
-          <el-row :gutter="12" style="width: 100%">
-            <el-col :span="12">
-              <el-button type="primary" size="small" @click="submit">应用</el-button>
-            </el-col>
-            <el-col :span="12">
-              <el-button size="small" @click="close">关闭</el-button>
-            </el-col>
-          </el-row>
-        </el-form-item>
-      </el-col>
-    </el-row>
-  </el-form>
+      </el-row>
+    </el-form>
+  </div>
 </template>
 
 <style>
 /* ============================================================
- * 设置窗口视觉（浅色主题，禁止 dark mode）。仅表现层，逻辑/IPC 未改。
- * 设计系统与已审核稿 docs/ui-redesign/02-settings.svg 一致。
+ * 设置视图 · 命名空间 .cv-settings（SPA 路由视图，无全局规则）
+ * 视觉与已审核稿 docs/ui-redesign/02-settings.svg 一致。
  * ============================================================ */
-:root {
-  --font-base: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
-  --font-mono: "Cascadia Mono", "Consolas", monospace;
-
-  --brand: #3358e0;
-  --brand-strong: #2746b8;
-  --brand-soft: #eaf0fe;
-
-  --success: #16a34a;
-  --warning: #b5740f;
-  --danger: #dc2626;
-
-  --text-1: #1a2233;
-  --text-2: #5b6472;
-  --text-3: #9aa3b2;
-  --border: #e6e9f0;
-  --page-bg: #f4f6fa;
-  --card-bg: #ffffff;
-  --field-bg: #f4f6fa;
-
-  --radius-card: 12px;
-  --radius-control: 8px;
-  --shadow-card: 0 1px 4px rgba(26, 34, 51, 0.08);
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
-  user-select: none;
-  background: var(--page-bg);
-  color: var(--text-1);
-  font-family: var(--font-base);
-  -webkit-font-smoothing: antialiased;
-}
-
-#app {
+.cv-settings {
+  height: 100%;
+  overflow: auto;
   padding: 18px 20px 20px;
   box-sizing: border-box;
 }
 
 /* ---------- 分段切换式 Tabs ---------- */
-.el-tabs {
+.cv-settings .el-tabs {
   margin-bottom: 18px;
 }
 
-.el-tabs__header {
+.cv-settings .el-tabs__header {
   margin: 0;
 }
 
-.el-tabs__nav-wrap::after {
+.cv-settings .el-tabs__nav-wrap::after {
   display: none;
 }
 
-.el-tabs__active-bar {
+.cv-settings .el-tabs__active-bar {
   display: none;
 }
 
-.el-tabs__nav {
+.cv-settings .el-tabs__nav {
   display: flex;
   gap: 4px;
   padding: 4px;
@@ -580,7 +541,7 @@ body {
   box-sizing: border-box;
 }
 
-.el-tabs__item {
+.cv-settings .el-tabs__item {
   height: 30px;
   line-height: 30px;
   padding: 0 18px !important;
@@ -591,18 +552,18 @@ body {
   transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.el-tabs__item:hover {
+.cv-settings .el-tabs__item:hover {
   color: var(--brand);
 }
 
-.el-tabs__item.is-active {
+.cv-settings .el-tabs__item.is-active {
   color: var(--brand);
   background: var(--card-bg);
   box-shadow: var(--shadow-card);
 }
 
 /* ---------- 表单卡片容器 ---------- */
-.el-form {
+.cv-settings .el-form {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -611,12 +572,12 @@ body {
   box-sizing: border-box;
 }
 
-.el-form-item {
+.cv-settings .el-form-item {
   width: 100%;
   margin-bottom: 14px;
 }
 
-.el-form--label-top .el-form-item__label {
+.cv-settings .el-form--label-top .el-form-item__label {
   padding: 0 0 4px;
   line-height: 1.4;
   font-size: 13px;
@@ -624,47 +585,47 @@ body {
   color: var(--text-1);
 }
 
-.el-form-item__label .el-icon-question {
+.cv-settings .el-form-item__label .el-icon-question {
   color: var(--text-3);
   font-size: 13px;
 }
 
-.el-form-item__error {
+.cv-settings .el-form-item__error {
   font-size: 11px;
   color: var(--danger);
   padding-top: 3px;
 }
 
-.el-input-number,
-.el-select,
-.el-button {
+.cv-settings .el-input-number,
+.cv-settings .el-select,
+.cv-settings .el-button {
   width: 100%;
 }
 
 /* ---------- 输入控件（element-plus 2.x：边框/底色在 __wrapper） ---------- */
-.el-input__wrapper {
+.cv-settings .el-input__wrapper {
   background: var(--field-bg);
   border-radius: var(--radius-control);
   box-shadow: 0 0 0 1px var(--border) inset;
   transition: box-shadow 0.18s ease, background-color 0.18s ease;
 }
 
-.el-input__wrapper:hover {
+.cv-settings .el-input__wrapper:hover {
   box-shadow: 0 0 0 1px #c9cfdc inset;
 }
 
-.el-input__wrapper.is-focus,
-.el-input__wrapper:focus-within {
+.cv-settings .el-input__wrapper.is-focus,
+.cv-settings .el-input__wrapper:focus-within {
   background: var(--card-bg);
   box-shadow: 0 0 0 1px var(--brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
 }
 
-.el-input__inner {
+.cv-settings .el-input__inner {
   color: var(--text-1);
   font-size: 13px;
 }
 
-.el-textarea__inner {
+.cv-settings .el-textarea__inner {
   background: var(--field-bg);
   border: none;
   border-radius: var(--radius-control);
@@ -674,83 +635,83 @@ body {
   transition: box-shadow 0.18s ease, background-color 0.18s ease;
 }
 
-.el-input__inner::placeholder,
-.el-textarea__inner::placeholder {
+.cv-settings .el-input__inner::placeholder,
+.cv-settings .el-textarea__inner::placeholder {
   color: var(--text-3);
 }
 
-.el-textarea__inner:hover {
+.cv-settings .el-textarea__inner:hover {
   box-shadow: 0 0 0 1px #c9cfdc inset;
 }
 
-.el-textarea__inner:focus {
+.cv-settings .el-textarea__inner:focus {
   background: var(--card-bg);
   box-shadow: 0 0 0 1px var(--brand) inset, 0 0 0 3px rgba(51, 88, 224, 0.12);
 }
 
 /* 只读路径输入用等宽字体 */
-.el-input.is-disabled .el-input__inner,
-.el-input__inner[readonly] {
+.cv-settings .el-input.is-disabled .el-input__inner,
+.cv-settings .el-input__inner[readonly] {
   font-family: var(--font-mono);
   cursor: pointer;
 }
 
-.el-input.is-disabled .el-input__wrapper {
+.cv-settings .el-input.is-disabled .el-input__wrapper {
   cursor: pointer;
 }
 
 /* 数字输入框（端口 / 上限）等宽 + 左对齐 */
-.el-input-number .el-input__inner {
+.cv-settings .el-input-number .el-input__inner {
   font-family: var(--font-mono);
   font-weight: 600;
   text-align: left;
 }
 
 /* ---------- Select 下拉 ---------- */
-.el-select .el-input__inner {
+.cv-settings .el-select .el-input__inner {
   cursor: pointer;
 }
 
-.el-select-dropdown {
+.cv-settings .el-select-dropdown {
   border-radius: var(--radius-control);
   border: 1px solid var(--border);
   box-shadow: 0 6px 16px rgba(26, 34, 51, 0.12);
 }
 
-.el-select-dropdown__item.selected {
+.cv-settings .el-select-dropdown__item.selected {
   color: var(--brand);
   font-weight: 600;
 }
 
 /* ---------- 开关 Switch ---------- */
-.el-switch.is-checked .el-switch__core {
+.cv-settings .el-switch.is-checked .el-switch__core {
   border-color: var(--brand);
   background-color: var(--brand);
 }
 
 /* ---------- 单选（关闭主窗口动作） ---------- */
-.el-radio.is-bordered {
+.cv-settings .el-radio.is-bordered {
   border-radius: var(--radius-control);
   border-color: var(--border);
   padding: 8px 14px;
 }
 
-.el-radio.is-bordered.is-checked {
+.cv-settings .el-radio.is-bordered.is-checked {
   border-color: var(--brand);
   background: var(--brand-soft);
 }
 
-.el-radio.is-checked .el-radio__inner {
+.cv-settings .el-radio.is-checked .el-radio__inner {
   border-color: var(--brand);
   background: var(--brand);
 }
 
-.el-radio.is-checked .el-radio__label {
+.cv-settings .el-radio.is-checked .el-radio__label {
   color: var(--brand);
 }
 
 /* ---------- 按钮 ---------- */
-.el-button {
+.cv-settings .el-button {
   border-radius: var(--radius-control);
   font-size: 13px;
   font-weight: 600;
@@ -759,34 +720,34 @@ body {
 }
 
 /* 行内「选择 / 测试连接」次级按钮：浅底品牌色 */
-.el-button:not(.el-button--primary) {
+.cv-settings .el-button:not(.el-button--primary) {
   background: var(--brand-soft);
   border-color: transparent;
   color: var(--brand);
 }
 
-.el-button:not(.el-button--primary):hover,
-.el-button:not(.el-button--primary):focus {
+.cv-settings .el-button:not(.el-button--primary):hover,
+.cv-settings .el-button:not(.el-button--primary):focus {
   background: #dde7fd;
   border-color: transparent;
   color: var(--brand-strong);
 }
 
 /* 主操作「应用」：实色品牌按钮 */
-.el-button--primary {
+.cv-settings .el-button--primary {
   background: var(--brand);
   border-color: var(--brand);
   color: #fff;
 }
 
-.el-button--primary:hover,
-.el-button--primary:focus {
+.cv-settings .el-button--primary:hover,
+.cv-settings .el-button--primary:focus {
   background: var(--brand-strong);
   border-color: var(--brand-strong);
 }
 
 /* ---------- 底部操作区分隔 ---------- */
-.el-form > .el-row > .el-col:last-child > .el-form-item {
+.cv-settings .el-form > .el-row > .el-col:last-child > .el-form-item {
   margin-top: 4px;
   margin-bottom: 6px;
   padding-top: 16px;
@@ -794,12 +755,12 @@ body {
 }
 
 /* 隐藏滚动条但仍可滚动 */
-.hide-scrollbar {
+.cv-settings .hide-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-.hide-scrollbar::-webkit-scrollbar {
+.cv-settings .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
 </style>

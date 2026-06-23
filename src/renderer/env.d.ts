@@ -102,10 +102,15 @@ interface HiprintRenderBridge {
   ): void
 }
 
+interface HiprintConsoleBridge {
+  onNavigate(callback: (route: string) => void): void
+}
+
 interface Window {
   hiprintIndex?: HiprintIndexBridge
   hiprintSet?: HiprintSetBridge
   hiprintPrintLog?: HiprintPrintLogBridge
   hiprintSoftwareLog?: HiprintSoftwareLogBridge
   hiprintRender?: HiprintRenderBridge
+  hiprintConsole?: HiprintConsoleBridge
 }

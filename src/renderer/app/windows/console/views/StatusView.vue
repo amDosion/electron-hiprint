@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { Printer, View, Setting, DocumentCopy } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-// index 窗口未整体注册 element-plus（main.ts 仅 createApp），故按需引入 ElMessage 的样式，
-// 否则复制反馈的提示条无样式。与设置窗口的反馈语言保持一致。
-import 'element-plus/es/components/message/style/css'
 import { requireBridge } from '@/shared/bridge'
 
-// Electron preload 桥接（src/preload/index.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
-const ipc = requireBridge(window.hiprintIndex, 'hiprintIndex', 'preload/index.js')
+// Electron preload 桥接（src/preload/console.js，合并桥）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintIndex, 'hiprintIndex', 'preload/console.js')
 
 document.title = ipc.title
+
+const router = useRouter()
 
 const macAddress = ref('')
 const ipAddress = ref('')
@@ -37,7 +37,8 @@ function privateData(data: string): string {
 }
 
 function openSetting(): void {
-  ipc.send('openSetting')
+  // 同窗导航到设置视图（不再开独立设置窗）
+  router.push('/settings')
 }
 
 function handleTriggerView(): void {
@@ -45,8 +46,8 @@ function handleTriggerView(): void {
 }
 
 // 复制始终使用真实值（而非遮罩后的展示值）；空值（IPC 回填前/获取失败）直接忽略，
-// 避免写入空串并谎报“复制成功”。反馈用应用内 ElMessage（即时、自动消失），
-// 取代旧的 OS 系统通知——后者可能被 Windows 专注助手/通知设置压制，导致“点了没反应”。
+// 避免写入空串并谎报"复制成功"。反馈用应用内 ElMessage（即时、自动消失），
+// 取代旧的 OS 系统通知——后者可能被 Windows 专注助手/通知设置压制，导致"点了没反应"。
 function handleCopy(value: string): void {
   if (!value) return
   ipc.writeText(value)
@@ -106,7 +107,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="box">
+  <div class="cv-status">
     <div class="container">
       <!-- 顶栏：品牌 + 常驻状态胶囊 + 隐私切换 + 设置 -->
       <div class="app-topbar">
@@ -128,7 +129,7 @@ onMounted(() => {
         <div class="hero-card">
           <div class="hero-main">
             <div class="field-label">服务地址 SERVICE URL</div>
-            <span class="hero-value" :title="ipAddress" @click="handleCopy(ipAddress)">
+            <span class="hero-value" :title="privateData(ipAddress)" @click="handleCopy(ipAddress)">
               {{ privateData(ipAddress) }}
             </span>
           </div>
@@ -167,7 +168,7 @@ onMounted(() => {
           <div class="tile">
             <div class="tile-body">
               <div class="tile-label">设备编号</div>
-              <div class="tile-value is-mono" :title="deviceId" @click="handleCopy(deviceId)">
+              <div class="tile-value is-mono" :title="privateData(deviceId)" @click="handleCopy(deviceId)">
                 {{ privateData(deviceId) }}
               </div>
             </div>
@@ -177,7 +178,7 @@ onMounted(() => {
 
       <!-- 底栏：MAC + 版本 -->
       <div class="app-footer">
-        <span class="footer-mac" :title="macAddress" @click="handleCopy(macAddress)">
+        <span class="footer-mac" :title="privateData(macAddress)" @click="handleCopy(macAddress)">
           MAC&nbsp;&nbsp;{{ privateData(macAddress) }}
         </span>
         <span class="footer-ver">v{{ version }}</span>
@@ -187,44 +188,17 @@ onMounted(() => {
 </template>
 
 <style>
-:root {
-  --c-brand: #3358e0;
-  --c-brand-soft: #eaf0fe;
-  --c-success: #16a34a;
-  --c-success-soft: #e7f6ec;
-  --c-success-text: #16823c;
-  --c-warning: #b5740f;
-  --c-danger: #dc2626;
-  --c-text: #1a2233;
-  --c-text-2: #5b6472;
-  --c-text-3: #9aa3b2;
-  --c-border: #e6e9f0;
-  --c-page: #f4f6fa;
-  --c-card: #ffffff;
-  --c-dot-idle: #c2c8d2;
-  --r-card: 12px;
-  --r-ctrl: 8px;
-  --font-base: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
-  --font-mono: "Cascadia Mono", "Consolas", monospace;
-}
-
-body {
-  margin: 0;
-  padding: 0;
-  user-select: none;
-  background: var(--c-page);
-  color: var(--c-text);
-  font-family: var(--font-base);
-}
-
-/* 布局壳（替代原共享 style.css 的 .box/.container 基底） */
-.box {
-  width: 100vw;
-  height: 100vh;
-  position: relative;
+/* ============================================================
+   连接状态视图 · 命名空间 .cv-status（SPA 路由视图，无全局规则）
+   ============================================================ */
+.cv-status {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
-.container {
+
+.cv-status .container {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
@@ -234,7 +208,7 @@ body {
 }
 
 /* ---- 顶栏 ---- */
-.app-topbar {
+.cv-status .app-topbar {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -244,7 +218,7 @@ body {
   border-bottom: 1px solid var(--c-border);
   box-sizing: border-box;
 }
-.app-logo {
+.cv-status .app-logo {
   width: 30px;
   height: 30px;
   flex: 0 0 30px;
@@ -256,16 +230,16 @@ body {
   color: #fff;
   font-size: 16px;
 }
-.app-brand {
+.cv-status .app-brand {
   font-size: 15px;
   font-weight: 700;
   color: var(--c-text);
   white-space: nowrap;
 }
-.app-topbar-spacer {
+.cv-status .app-topbar-spacer {
   flex: 1 1 auto;
 }
-.status-pill {
+.cv-status .status-pill {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -277,7 +251,7 @@ body {
   background: var(--c-success-soft);
   color: var(--c-success-text);
 }
-.status-pill .dot {
+.cv-status .status-pill .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -285,8 +259,8 @@ body {
 }
 
 /* 顶栏图标按钮（隐私切换 + 设置），常驻显示 */
-.app-topbar .privateIcon,
-.app-topbar .setIcon {
+.cv-status .app-topbar .privateIcon,
+.cv-status .app-topbar .setIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -301,25 +275,25 @@ body {
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.app-topbar .privateIcon:hover,
-.app-topbar .setIcon:hover {
+.cv-status .app-topbar .privateIcon:hover,
+.cv-status .app-topbar .setIcon:hover {
   background: var(--c-brand-soft);
   color: var(--c-brand);
 }
 /* 隐私关闭时的眼睛斜线（替代原共享 style.css 的 ::after） */
-.app-topbar .privateIcon.hidden::after {
+.cv-status .app-topbar .privateIcon.hidden::after {
   position: absolute;
   content: "/";
   left: calc(50% - 6px);
 }
 
 /* ---- 主体 ---- */
-.app-body {
+.cv-status .app-body {
   padding: 16px 18px 12px;
   box-sizing: border-box;
 }
 
-.hero-card {
+.cv-status .hero-card {
   position: relative;
   display: flex;
   align-items: center;
@@ -329,7 +303,7 @@ body {
   padding: 12px 16px 12px 18px;
   overflow: hidden;
 }
-.hero-card::before {
+.cv-status .hero-card::before {
   content: "";
   position: absolute;
   left: 0;
@@ -339,18 +313,18 @@ body {
   border-radius: 2px;
   background: var(--c-brand);
 }
-.hero-card .hero-main {
+.cv-status .hero-card .hero-main {
   flex: 1 1 auto;
   min-width: 0;
 }
-.field-label {
+.cv-status .field-label {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 1px;
   color: var(--c-text-3);
   margin-bottom: 4px;
 }
-.hero-value {
+.cv-status .hero-value {
   font-family: var(--font-mono);
   font-size: 17px;
   font-weight: 700;
@@ -361,10 +335,10 @@ body {
   text-overflow: ellipsis;
   display: block;
 }
-.hero-value:hover {
+.cv-status .hero-value:hover {
   color: var(--c-brand);
 }
-.copy-hint {
+.cv-status .copy-hint {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -381,22 +355,22 @@ body {
   white-space: nowrap;
   transition: background 0.15s, color 0.15s;
 }
-.copy-hint:hover {
+.cv-status .copy-hint:hover {
   background: var(--c-brand);
   color: #fff;
 }
-.copy-hint:active {
+.cv-status .copy-hint:active {
   filter: brightness(0.96);
 }
 
 /* 状态网格 2x2 */
-.tile-grid {
+.cv-status .tile-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-top: 12px;
 }
-.tile {
+.cv-status .tile {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -407,7 +381,7 @@ body {
   min-height: 46px;
   box-sizing: border-box;
 }
-.tile .dot {
+.cv-status .tile .dot {
   flex: 0 0 10px;
   width: 10px;
   height: 10px;
@@ -415,25 +389,25 @@ body {
   background: var(--c-dot-idle);
   transition: background 0.2s;
 }
-.tile .dot.is-success {
+.cv-status .tile .dot.is-success {
   background: var(--c-success);
 }
-.tile .dot.is-warning {
+.cv-status .tile .dot.is-warning {
   background: var(--c-warning);
 }
-.tile .dot.is-danger {
+.cv-status .tile .dot.is-danger {
   background: var(--c-danger);
 }
-.tile .tile-body {
+.cv-status .tile .tile-body {
   min-width: 0;
   flex: 1 1 auto;
 }
-.tile-label {
+.cv-status .tile-label {
   font-size: 11px;
   color: var(--c-text-3);
   margin-bottom: 2px;
 }
-.tile-value {
+.cv-status .tile-value {
   font-size: 14px;
   font-weight: 600;
   color: var(--c-text);
@@ -441,16 +415,16 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tile-value.is-mono {
+.cv-status .tile-value.is-mono {
   font-family: var(--font-mono);
   cursor: pointer;
 }
-.tile-value.is-mono:hover {
+.cv-status .tile-value.is-mono:hover {
   color: var(--c-brand);
 }
 
 /* ---- 底栏 ---- */
-.app-footer {
+.cv-status .app-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -460,16 +434,16 @@ body {
   font-size: 11px;
   color: var(--c-text-3);
 }
-.app-footer .footer-mac {
+.cv-status .app-footer .footer-mac {
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.app-footer .footer-mac:hover {
+.cv-status .app-footer .footer-mac:hover {
   color: var(--c-brand);
 }
-.app-footer .footer-ver {
+.cv-status .app-footer .footer-ver {
   flex: 0 0 auto;
   font-family: var(--font-mono);
 }
