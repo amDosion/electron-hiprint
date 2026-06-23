@@ -1,9 +1,9 @@
 "use strict";
 
 // 打印日志窗口 SFC 渲染冒烟（需真实 Electron）。
-// 经 app:// 加载已构建的 assets/printLog.html，附真实 src/preload/printLog.js（暴露 hiprintPrintLog 桥），
+// 经 app:// 加载已构建的 assets/console.html#/print-log，附真实 src/preload/console.js（暴露 hiprintPrintLog 桥），
 // 断言：窗口加载成功、Vue 根挂载、筛选表单/表格/分页渲染、无脚本错误。
-// 主进程 IPC（request-logs 等）无人应答属正常 → 表格空数据，不阻碍渲染验证。
+// 主进程 IPC 使用最小 stub，避免 console preload 同步读取标题/版本/设置快照时阻塞。
 // 运行：npx electron tools/repro/runtime/printlog-window-render-smoke.js
 // 约定：stdout 打印 SMOKE_RESULT <json>，failed=false 且退出码 0 表示通过。
 
@@ -26,9 +26,34 @@ app.once("will-quit", () => {
   fs.rmSync(USER_DATA_DIR, { recursive: true, force: true });
 });
 
-// preload/printLog.js 在加载时 sendSync 同步取 rePrint 开关（阻塞渲染直到主进程应答）。
+// console.js preload 在加载时 sendSync 同步取主标题、版本、设置快照与 rePrint 开关。
 ipcMain.on("hiprint:store-get", (event, key) => {
-  event.returnValue = key === "rePrint" ? 1 : undefined;
+  if (key === "mainTitle") event.returnValue = "Electron-hiprint";
+  else if (key === "rePrint") event.returnValue = 1;
+  else event.returnValue = undefined;
+});
+ipcMain.on("hiprint:app-version", (event) => {
+  event.returnValue = "0.0.0-repro";
+});
+ipcMain.on("hiprint:settings-snapshot", (event) => {
+  event.returnValue = {
+    port: 17521,
+    token: "",
+    nickName: "",
+    openAtLogin: false,
+    openAsHidden: false,
+    connectTransit: false,
+    transitUrl: "",
+    transitToken: "",
+    allowNotify: false,
+    closeType: "tray",
+    pdfPath: "C:/ProgramData/hiprint/pdf",
+    defaultPrinter: "",
+    exportDirectory: { enabled: false },
+  };
+});
+ipcMain.on("request-logs", (event) => {
+  event.sender.send("print-logs", { rows: [], total: 0 });
 });
 
 const {
@@ -61,7 +86,7 @@ app.whenReady().then(async () => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      preload: path.join(REPO_ROOT, "src/preload/printLog.js"),
+      preload: path.join(REPO_ROOT, "src/preload/console.js"),
     },
   });
 
@@ -79,13 +104,14 @@ app.whenReady().then(async () => {
   });
 
   try {
-    await win.loadURL("app://bundle/printLog.html");
-    result.steps.push({ step: "loaded-printlog-html", ok: true });
-    await new Promise((r) => setTimeout(r, 500));
+    await win.loadURL("app://bundle/console.html#/print-log");
+    result.steps.push({ step: "loaded-printlog-route", ok: true });
+    await new Promise((r) => setTimeout(r, 700));
 
     const probe = await win.webContents.executeJavaScript(`(async () => {
       const out = {};
       out.origin = location.origin;
+      out.hash = location.hash;
       out.hasBridge = typeof window.hiprintPrintLog === 'object' && window.hiprintPrintLog !== null;
       const appEl = document.querySelector('#app');
       out.appChildCount = appEl ? appEl.children.length : -1;
@@ -94,16 +120,47 @@ app.whenReady().then(async () => {
       out.hasTable = !!document.querySelector('.table-wrap table.table');
       out.headerCells = document.querySelectorAll('.table-wrap table.table thead th').length;
       out.hasPagination = !!document.querySelector('.pagination');
-      out.searchBtnText = (document.querySelector('.search-btns .pl-btn-primary') || {}).textContent || '';
+      const searchBtn = document.querySelector('.search-btns .pl-btn-primary');
+      out.searchBtnText = (searchBtn || {}).textContent || '';
+      if (searchBtn) {
+        const style = getComputedStyle(searchBtn);
+        out.searchBtnStyle = {
+          color: style.color,
+          backgroundColor: style.backgroundColor,
+          backgroundImage: style.backgroundImage,
+          borderColor: style.borderColor,
+        };
+      } else {
+        out.searchBtnStyle = null;
+      }
       out.selectCount = document.querySelectorAll('.search-form select.pl-select').length;
-      out.hasDatePicker = document.querySelectorAll('.search-form input[type="datetime-local"]').length >= 2;
+      out.dateInputCount = document.querySelectorAll('.search-form input[type="datetime-local"]').length;
+      out.hasDatePicker = out.dateInputCount >= 2;
+      out.timeLabels = Array.from(document.querySelectorAll('.filter-time .time-placeholder')).map((el) => el.textContent.trim());
+      out.timeSeparatorText = (document.querySelector('.filter-time .dt-sep') || {}).textContent || '';
+      out.emptyDateInputsHideNativePlaceholder = Array.from(document.querySelectorAll('.filter-time input[type="datetime-local"]')).every((input) => {
+        const style = getComputedStyle(input);
+        return input.classList.contains('is-empty') && style.color === 'rgba(0, 0, 0, 0)';
+      });
       return out;
     })()`);
     result.probe = probe;
 
+    if (process.env.HIPRINT_CAPTURE_PRINTLOG_OUT) {
+      const capturePath = path.resolve(REPO_ROOT, process.env.HIPRINT_CAPTURE_PRINTLOG_OUT);
+      fs.mkdirSync(path.dirname(capturePath), { recursive: true });
+      const image = await win.capturePage();
+      fs.writeFileSync(capturePath, image.toPNG());
+      result.capturePath = capturePath;
+    }
+
     if (probe.origin !== "app://bundle") {
       result.failed = true;
       result.steps.push({ step: "origin-mismatch", got: probe.origin });
+    }
+    if (probe.hash !== "#/print-log") {
+      result.failed = true;
+      result.steps.push({ step: "route-mismatch", got: probe.hash });
     }
     if (!probe.hasBridge) {
       result.failed = true;
@@ -145,6 +202,30 @@ app.whenReady().then(async () => {
       result.steps.push({
         step: "search-btn-missing",
         got: probe.searchBtnText,
+      });
+    }
+    if (
+      JSON.stringify(probe.timeLabels) !== JSON.stringify(["开始时间", "结束时间"]) ||
+      String(probe.timeSeparatorText).trim() !== "-" ||
+      probe.emptyDateInputsHideNativePlaceholder !== true
+    ) {
+      result.failed = true;
+      result.steps.push({
+        step: "time-range-labels-wrong",
+        labels: probe.timeLabels,
+        separator: probe.timeSeparatorText,
+        hideNativePlaceholder: probe.emptyDateInputsHideNativePlaceholder,
+      });
+    }
+    if (
+      !probe.searchBtnStyle ||
+      (probe.searchBtnStyle.backgroundImage === "none" &&
+        /rgba?\(255,\s*255,\s*255|rgba?\(0,\s*0,\s*0,\s*0\)/.test(probe.searchBtnStyle.backgroundColor))
+    ) {
+      result.failed = true;
+      result.steps.push({
+        step: "search-btn-background-invisible",
+        style: probe.searchBtnStyle,
       });
     }
     if (result.consoleErrors.length > 0) {

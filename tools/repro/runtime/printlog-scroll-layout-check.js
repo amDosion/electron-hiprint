@@ -3,9 +3,9 @@
 // 打印记录窗口布局回归（需真实 Electron）。
 // 守护用户报告的缺陷：旧版用脆弱的 calc(100vh - …) 固定表高，搜索卡换行/尺寸变化时
 // 整窗滚动、分页被顶出视口。修复为 flex 纵向布局：搜索卡与分页 flex:0 0 auto 固定，
-// 表格区 .table-wrap flex:1 + min-height:0，el-table height="100%" 由表体内部滚动。
+// 表格区 .table-wrap flex:1 + min-height:0，由原生表格容器内部滚动。
 //
-// 经 app:// 加载已构建的 assets/printLog.html，附真实 preload，注入 50 行后断言四不变式：
+// 经 app:// 加载已构建的 assets/console.html#/print-log，附真实 preload，注入 50 行后断言四不变式：
 //   1) 整窗不滚动（documentElement 不溢出视口）
 //   2) 表体可内部滚动（el-scrollbar__wrap scrollHeight > clientHeight）
 //   3) 分页固定且完整可见（getBoundingClientRect().bottom <= innerHeight）
@@ -36,7 +36,32 @@ app.once("will-quit", () => {
 });
 
 ipcMain.on("hiprint:store-get", (event, key) => {
-  event.returnValue = key === "rePrint" ? 1 : undefined;
+  if (key === "mainTitle") event.returnValue = "Electron-hiprint";
+  else if (key === "rePrint") event.returnValue = 1;
+  else event.returnValue = undefined;
+});
+ipcMain.on("hiprint:app-version", (event) => {
+  event.returnValue = "0.0.0-repro";
+});
+ipcMain.on("hiprint:settings-snapshot", (event) => {
+  event.returnValue = {
+    port: 17521,
+    token: "",
+    nickName: "",
+    openAtLogin: false,
+    openAsHidden: false,
+    connectTransit: false,
+    transitUrl: "",
+    transitToken: "",
+    allowNotify: false,
+    closeType: "tray",
+    pdfPath: "C:/ProgramData/hiprint/pdf",
+    defaultPrinter: "",
+    exportDirectory: { enabled: false },
+  };
+});
+ipcMain.on("request-logs", (event) => {
+  event.sender.send("print-logs", { rows: mockRows(50), total: 200 });
 });
 
 const {
@@ -80,7 +105,7 @@ app.whenReady().then(async () => {
     height: 600,
     show: false,
     webPreferences: {
-      preload: path.join(REPO_ROOT, "src/preload/printLog.js"),
+      preload: path.join(REPO_ROOT, "src/preload/console.js"),
       sandbox: true,
       contextIsolation: true,
     },
@@ -98,13 +123,12 @@ app.whenReady().then(async () => {
   });
 
   try {
-    await win.loadURL("app://bundle/printLog.html");
+    await win.loadURL("app://bundle/console.html#/print-log");
   } catch (err) {
     fail("loadURL failed: " + (err && err.message));
     return;
   }
 
-  win.webContents.send("print-logs", { rows: mockRows(50), total: 200 });
   await new Promise((r) => setTimeout(r, 600));
 
   const geom = await win.webContents.executeJavaScript(`(() => {

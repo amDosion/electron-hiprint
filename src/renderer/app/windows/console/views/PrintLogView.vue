@@ -170,12 +170,34 @@ onMounted(() => {
       <div class="search-container">
         <div class="filter-item filter-time">
           <span class="filter-label">时间：</span>
-          <input class="pl-ctrl pl-dt" type="datetime-local" step="1" v-model="searchData.startTime" />
-          <span class="dt-sep">至</span>
-          <input class="pl-ctrl pl-dt" type="datetime-local" step="1" v-model="searchData.endTime" />
+          <div class="time-range" aria-label="打印时间范围">
+            <label class="time-input-shell">
+              <input
+                class="pl-ctrl pl-dt"
+                :class="{ 'is-empty': !searchData.startTime }"
+                type="datetime-local"
+                step="1"
+                aria-label="开始时间"
+                v-model="searchData.startTime"
+              />
+              <span v-if="!searchData.startTime" class="time-placeholder">开始时间</span>
+            </label>
+            <span class="dt-sep" aria-hidden="true">-</span>
+            <label class="time-input-shell">
+              <input
+                class="pl-ctrl pl-dt"
+                :class="{ 'is-empty': !searchData.endTime }"
+                type="datetime-local"
+                step="1"
+                aria-label="结束时间"
+                v-model="searchData.endTime"
+              />
+              <span v-if="!searchData.endTime" class="time-placeholder">结束时间</span>
+            </label>
+          </div>
         </div>
 
-        <div class="filter-item filter-select">
+        <div class="filter-item filter-select filter-client">
           <span class="filter-label">连接类型：</span>
           <select class="pl-ctrl pl-select" v-model="searchData.clientType">
             <option value="">请选择</option>
@@ -184,7 +206,7 @@ onMounted(() => {
           </select>
         </div>
 
-        <div class="filter-item filter-select">
+        <div class="filter-item filter-select filter-status">
           <span class="filter-label">状态：</span>
           <select class="pl-ctrl pl-select" v-model="searchData.status">
             <option value="">请选择</option>
@@ -331,6 +353,27 @@ onMounted(() => {
    打印记录视图 · 命名空间 .cv-print-log（SPA 路由视图，无全局规则）
    ============================================================ */
 .cv-print-log {
+  --pl-brand: var(--c-brand);
+  --pl-brand-soft: var(--c-brand-soft);
+  --pl-brand-grad: linear-gradient(135deg, #4f7bff 0%, #3358e0 100%);
+  --pl-success: var(--c-success);
+  --pl-success-soft: var(--c-success-soft);
+  --pl-success-text: var(--c-success-text);
+  --pl-warning: var(--c-warning);
+  --pl-warning-soft: #fef3e2;
+  --pl-danger: var(--c-danger);
+  --pl-danger-soft: #fdecec;
+  --pl-text: var(--c-text);
+  --pl-text-2: var(--c-text-2);
+  --pl-text-3: var(--c-text-3);
+  --pl-border: var(--c-border);
+  --pl-page: var(--c-page);
+  --pl-card: var(--c-card);
+  --pl-header: #f8fafc;
+  --pl-radius-card: var(--r-card);
+  --pl-radius-ctrl: var(--r-ctrl);
+  --pl-font: var(--font-base);
+  --pl-shadow: 0 1px 3px rgba(26, 34, 51, 0.06), 0 8px 24px rgba(26, 34, 51, 0.05);
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -375,11 +418,11 @@ onMounted(() => {
 }
 
 .cv-print-log .pl-select {
-  width: 114px;
+  width: 108px;
 }
 
 .cv-print-log .pl-dt {
-  width: 164px;
+  width: 160px;
 }
 
 /* ---------------- 筛选卡片 ---------------- */
@@ -394,10 +437,9 @@ onMounted(() => {
 }
 
 .cv-print-log .search-container {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: max-content max-content minmax(112px, 1fr);
+  align-items: end;
   gap: 10px 14px;
 }
 
@@ -405,8 +447,22 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex: 0 1 auto;
-  min-width: 0;
+  min-width: max-content;
+}
+
+.cv-print-log .filter-time {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.cv-print-log .filter-client {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.cv-print-log .filter-status {
+  grid-column: 1;
+  grid-row: 2;
 }
 
 .cv-print-log .filter-label {
@@ -416,22 +472,65 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.cv-print-log .dt-sep {
+.cv-print-log .time-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: max-content;
+}
+
+.cv-print-log .time-input-shell {
+  position: relative;
+  display: inline-block;
+}
+
+.cv-print-log .pl-dt.is-empty {
+  color: transparent;
+  caret-color: var(--pl-text);
+}
+
+.cv-print-log .pl-dt.is-empty::-webkit-datetime-edit,
+.cv-print-log .pl-dt.is-empty::-webkit-datetime-edit-fields-wrapper,
+.cv-print-log .pl-dt.is-empty::-webkit-datetime-edit-text,
+.cv-print-log .pl-dt.is-empty::-webkit-datetime-edit-month-field,
+.cv-print-log .pl-dt.is-empty::-webkit-datetime-edit-day-field,
+.cv-print-log .pl-dt.is-empty::-webkit-datetime-edit-year-field,
+.cv-print-log .pl-dt.is-empty::-webkit-datetime-edit-hour-field,
+.cv-print-log .pl-dt.is-empty::-webkit-datetime-edit-minute-field,
+.cv-print-log .pl-dt.is-empty::-webkit-datetime-edit-second-field {
+  color: transparent;
+}
+
+.cv-print-log .time-placeholder {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--pl-text-3);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.cv-print-log .dt-sep {
+  color: var(--pl-text-2);
+  font-size: 13px;
+  line-height: 1;
 }
 
 .cv-print-log .search-btns {
-  margin-left: auto;
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
 }
 
 .cv-print-log .pl-btn {
   height: 30px;
-  padding: 0 16px;
+  padding: 0 13px;
   border-radius: var(--pl-radius-ctrl);
   border: 1px solid var(--pl-border);
   background: var(--pl-card);
