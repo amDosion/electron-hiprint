@@ -3,13 +3,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Printer, View, Setting, DocumentCopy } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-// index 窗口未整体注册 element-plus（main.ts 仅 createApp），故按需引入 ElMessage 的样式，
-// 否则复制反馈的提示条无样式。与设置窗口的反馈语言保持一致。
-import 'element-plus/es/components/message/style/css'
 import { requireBridge } from '@/shared/bridge'
 
-// Electron preload 桥接（src/preload/index.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
-const ipc = requireBridge(window.hiprintIndex, 'hiprintIndex', 'preload/index.js')
+// Electron preload 桥接（src/preload/console.js，合并桥）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintIndex, 'hiprintIndex', 'preload/console.js')
 
 document.title = ipc.title
 

@@ -10,8 +10,8 @@ import ConfirmDialog from '@/shared/ConfirmDialog.vue'
 // <input>/<button> + 内联 SVG 后，包体只剩 Vue+应用（见
 // .investigations/2026-06-17-log-window-dom-ready-full-element-plus.md 第 11 节）。
 
-// Electron preload 桥接（src/preload/softwareLog.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
-const ipc = requireBridge(window.hiprintSoftwareLog, 'hiprintSoftwareLog', 'preload/softwareLog.js')
+// Electron preload 桥接（src/preload/console.js，合并桥）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintSoftwareLog, 'hiprintSoftwareLog', 'preload/console.js')
 
 interface DisplayLine {
   ts: string

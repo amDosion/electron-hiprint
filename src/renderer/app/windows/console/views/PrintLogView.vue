@@ -11,8 +11,8 @@ import ConfirmDialog from '@/shared/ConfirmDialog.vue'
 // .investigations/2026-06-17-log-window-dom-ready-full-element-plus.md 第 12 节）。
 // IPC 契约（request-logs / clear-logs / reprint 负载结构、sort.order 取值 ascending/descending）保持不变。
 
-// Electron preload 桥接（src/preload/printLog.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
-const ipc = requireBridge(window.hiprintPrintLog, 'hiprintPrintLog', 'preload/printLog.js')
+// Electron preload 桥接（src/preload/console.js，合并桥）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintPrintLog, 'hiprintPrintLog', 'preload/console.js')
 
 // rePrint 总开关（preload 启动时同步读取，全程不变）
 const rePrintAble = ipc.rePrintAble

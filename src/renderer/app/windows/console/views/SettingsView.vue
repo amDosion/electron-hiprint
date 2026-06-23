@@ -5,8 +5,8 @@ import { ElMessage } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import { requireBridge } from '@/shared/bridge'
 
-// Electron preload 桥接（src/preload/set.js）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
-const ipc = requireBridge(window.hiprintSet, 'hiprintSet', 'preload/set.js')
+// Electron preload 桥接（src/preload/console.js，合并桥）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
+const ipc = requireBridge(window.hiprintSet, 'hiprintSet', 'preload/console.js')
 
 const router = useRouter()
 
