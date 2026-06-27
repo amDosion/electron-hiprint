@@ -6,10 +6,6 @@ const { spawnSync } = require("node:child_process");
 const repoRoot = path.resolve(__dirname, "..");
 
 const TARGETS = {
-  "build-w": {
-    builderArgs: ["-w", "nsis:ia32"],
-    tag: "win_x32",
-  },
   "build-w-64": {
     builderArgs: ["-w", "nsis:x64"],
     tag: "win_x64",
@@ -41,7 +37,6 @@ const TARGETS = {
 };
 
 const BUILD_ALL_TARGETS = [
-  "build-w",
   "build-w-64",
   "build-m",
   "build-m-arm64",

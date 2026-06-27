@@ -1,7 +1,7 @@
 "use strict";
 const { contextBridge, ipcRenderer } = require("electron");
 
-// ---- hiprintIndex（原 preload/index.js）----
+// ---- hiprintIndex（兼容旧状态页桥）----
 const indexSend = new Set(["getMachineId","getAddress","getConnectionStatus","openSetting","notification"]);
 const indexOn = new Set(["machineId","address","connectionStatus","serverConnection","printTask","clientConnection"]);
 contextBridge.exposeInMainWorld("hiprintIndex", {
@@ -12,8 +12,8 @@ contextBridge.exposeInMainWorld("hiprintIndex", {
   writeText(text) { ipcRenderer.send("hiprint:clipboard-write", String(text || "")); },
 });
 
-// ---- hiprintSet（原 preload/set.js）----
-const setSend = new Set(["setConfig","setContentSize","showOpenDialog","openDirectory","testTransit","closeSetWindow","getPrintersList"]);
+// ---- hiprintSet（兼容旧设置页桥）----
+const setSend = new Set(["setConfig","showOpenDialog","openDirectory","testTransit","closeSetWindow","getPrintersList"]);
 const setOn = new Set(["getPrintersList","openDialog","testTransitResult"]);
 contextBridge.exposeInMainWorld("hiprintSet", {
   store: ipcRenderer.sendSync("hiprint:settings-snapshot"),
@@ -23,7 +23,7 @@ contextBridge.exposeInMainWorld("hiprintSet", {
   removeAllListeners(channel) { if (setOn.has(channel)) ipcRenderer.removeAllListeners(channel); },
 });
 
-// ---- hiprintPrintLog（原 preload/printLog.js）----
+// ---- hiprintPrintLog（兼容旧打印记录桥）----
 const printLogSend = new Set(["request-logs","clear-logs","reprint"]);
 contextBridge.exposeInMainWorld("hiprintPrintLog", {
   rePrintAble: ipcRenderer.sendSync("hiprint:store-get", "rePrint"),
@@ -31,7 +31,7 @@ contextBridge.exposeInMainWorld("hiprintPrintLog", {
   onPrintLogs(callback) { if (typeof callback === "function") ipcRenderer.on("print-logs", callback); },
 });
 
-// ---- hiprintSoftwareLog（原 preload/softwareLog.js）----
+// ---- hiprintSoftwareLog（兼容旧软件日志桥）----
 contextBridge.exposeInMainWorld("hiprintSoftwareLog", {
   listDates: () => ipcRenderer.invoke("software-log:list-dates"),
   read: (date) => ipcRenderer.invoke("software-log:read", date),

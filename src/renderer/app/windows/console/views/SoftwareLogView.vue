@@ -2,6 +2,12 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { requireBridge } from '@/shared/bridge'
 import ConfirmDialog from '@/shared/ConfirmDialog.vue'
+import {
+  buildSoftwareLogDisplayLines,
+  formatSoftwareLogFooterCount,
+  formatSoftwareLogFooterSource,
+  type SoftwareLogDisplayLine,
+} from './software-log-view-model'
 
 // 软件日志是一个轻量日志查看器：日期下拉 + 级别下拉 + 搜索框 + 两个图标按钮。
 // 这些都是原生控件等价物，故本窗口刻意不引入 element-plus —— 否则仅 el-select 一个组件
@@ -13,12 +19,6 @@ import ConfirmDialog from '@/shared/ConfirmDialog.vue'
 // Electron preload 桥接（src/preload/console.js，合并桥）。缺失即在窗口初始化期抛错（说明未经正确 preload 加载）。
 const ipc = requireBridge(window.hiprintSoftwareLog, 'hiprintSoftwareLog', 'preload/console.js')
 
-interface DisplayLine {
-  ts: string
-  level: string
-  html: string
-}
-
 const dates = ref<string[]>([])
 const currentDate = ref('')
 const levelFilter = ref('')
@@ -29,63 +29,14 @@ const truncated = ref(false)
 const consoleEl = ref<HTMLElement | null>(null)
 const clearConfirmVisible = ref(false)
 
-// HTML 转义，避免日志正文中的标签被当作 DOM 注入（v-html 渲染前必须转义）
-function escapeHtml(str: string): string {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-function escapeRegExp(str: string): string {
-  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-const filteredLines = computed<DisplayLine[]>(() => {
-  const kw = keyword.value.trim()
-  const kwLower = kw.toLowerCase()
-  const level = levelFilter.value
-  // 级别筛选时把 verbose/silly 归入相近大类，保持 UI 简洁
-  const levelMatch = (lineLevel: string): boolean => {
-    if (!level) return true
-    if (level === 'info') return lineLevel === 'info' || lineLevel === 'verbose'
-    if (level === 'debug') return lineLevel === 'debug' || lineLevel === 'silly'
-    return lineLevel === level
-  }
-
-  // 高亮作用在"已 HTML 转义"的文本上，故正则须用"转义后的关键字"构建，
-  // 否则含 < > & " ' 的关键字（如 <info>）虽通过筛选却高亮不到（基准不一致）。
-  // 筛选仍用原始 msg（下方 indexOf），保持"哪些行显示"这一行为完全不变。
-  const re = kw ? new RegExp('(' + escapeRegExp(escapeHtml(kw)) + ')', 'gi') : null
-
-  const result: DisplayLine[] = []
-  lines.value.forEach((line) => {
-    if (!levelMatch(line.level)) return
-    const msg = line.msg || ''
-    if (kw && msg.toLowerCase().indexOf(kwLower) === -1) return
-    let html = escapeHtml(msg)
-    if (re) {
-      // 在已转义文本上高亮匹配项
-      html = html.replace(re, '<span class="hl">$1</span>')
-    }
-    result.push({ ts: line.ts, level: line.level, html })
-  })
-  return result
-})
-
-const footerSource = computed(() =>
-  sourceDay.value ? 'sqlite/software_logs · ' + sourceDay.value : 'sqlite/software_logs',
+const filteredLines = computed<SoftwareLogDisplayLine[]>(() =>
+  buildSoftwareLogDisplayLines(lines.value, levelFilter.value, keyword.value),
 )
 
+const footerSource = computed(() => formatSoftwareLogFooterSource(sourceDay.value))
+
 const footerCount = computed(() => {
-  const shown = filteredLines.value.length
-  const total = lines.value.length
-  if (shown === total) {
-    return total.toLocaleString() + ' 行'
-  }
-  return shown.toLocaleString() + ' / ' + total.toLocaleString() + ' 行'
+  return formatSoftwareLogFooterCount(filteredLines.value.length, lines.value.length)
 })
 
 function scrollToBottom(): void {

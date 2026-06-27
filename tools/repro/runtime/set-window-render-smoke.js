@@ -44,7 +44,6 @@ ipcMain.on("hiprint:settings-snapshot", (event) => {
   };
 });
 // 设置视图异步通道无需应答
-ipcMain.on("setContentSize", () => {});
 ipcMain.on("getPrintersList", () => {});
 
 const {

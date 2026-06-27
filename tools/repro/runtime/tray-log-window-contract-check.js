@@ -16,8 +16,10 @@ function indexOfOrMinusOne(text, pattern) {
 
 const files = {
   main: readText("main.js"),
-  printLog: readText("src/printLog.js"),
-  softwareLog: readText("src/softwareLog.js"),
+  appWindow: readText("src/app-window.js"),
+  consoleIpc: readText("src/console-ipc.js"),
+  consolePreload: readText("src/preload/console.js"),
+  consoleRouter: readText("src/renderer/app/windows/console/router.ts"),
   loadingView: readText("src/loading-view.js"),
 };
 
@@ -29,54 +31,42 @@ function expect(condition, id, severity, detail) {
   }
 }
 
-function expectLoadingBeforeWindowLoad(fileKey, assetName) {
-  const text = files[fileKey];
-  const attachIndex = text.indexOf("attachLoadingView(");
-  const loadIndex = text.indexOf(`getAssetUrl("${assetName}")`);
+function expectRoute(pathname, name) {
   expect(
-    attachIndex >= 0 && loadIndex >= 0 && attachIndex < loadIndex,
-    `${fileKey.toUpperCase()}-LOADING-VIEW-NOT-ATTACHED-BEFORE-LOAD`,
+    files.consoleRouter.includes(`path: "${pathname}"`) &&
+      files.consoleRouter.includes(`name: "${name}"`),
+    `CONSOLE-ROUTE-${name.toUpperCase()}-MISSING`,
     "high",
-    `${fileKey} should attach the loading WebContentsView before loading ${assetName}.`,
+    `Console router should expose ${pathname} for the ${name} view.`,
   );
 }
 
-function expectIpcBeforeWindowLoad(fileKey, initCall, assetName) {
-  const text = files[fileKey];
-  const initIndex = text.indexOf(initCall);
-  const loadIndex = text.indexOf(`getAssetUrl("${assetName}")`);
+function expectBridge(bridgeName, requiredText) {
   expect(
-    initIndex >= 0 && loadIndex >= 0 && initIndex < loadIndex,
-    `${fileKey.toUpperCase()}-IPC-NOT-READY-BEFORE-LOAD`,
+    files.consolePreload.includes(`"${bridgeName}"`) &&
+      requiredText.every((text) => files.consolePreload.includes(text)),
+    `CONSOLE-PRELOAD-${bridgeName.toUpperCase()}-BRIDGE-MISSING`,
     "high",
-    `${fileKey} should register IPC handlers before loading ${assetName}; the renderer requests data as soon as it mounts.`,
+    `src/preload/console.js should expose ${bridgeName} with the legacy-compatible methods/channels used by the console SPA.`,
   );
 }
 
-expectLoadingBeforeWindowLoad("printLog", "printLog.html");
-expectLoadingBeforeWindowLoad("softwareLog", "softwareLog.html");
-expectIpcBeforeWindowLoad("printLog", "initPrintLogEvent();", "printLog.html");
-expectIpcBeforeWindowLoad(
-  "softwareLog",
-  "initSoftwareLogEvent();",
-  "softwareLog.html",
+const attachIndex = files.appWindow.indexOf("attachLoadingView(");
+const loadIndex = files.appWindow.indexOf('getAssetUrl("console.html")');
+expect(
+  attachIndex >= 0 && loadIndex >= 0 && attachIndex < loadIndex,
+  "CONSOLE-LOADING-VIEW-NOT-ATTACHED-BEFORE-LOAD",
+  "high",
+  "The console BrowserWindow should attach the loading WebContentsView before loading console.html.",
 );
 
 expect(
-  /await\s+PRINT_LOG_WINDOW\.loadURL\(\s*getAssetUrl\("printLog\.html"\)\s*\)/.test(
-    files.printLog,
+  /loadURL\(\s*getAssetUrl\("console\.html"\)\s*\)\s*\.catch\(/.test(
+    files.appWindow,
   ),
-  "PRINTLOG-LOADURL-NOT-AWAITED",
+  "CONSOLE-LOADURL-FAILURE-NOT-OBSERVED",
   "medium",
-  "Print log window creation should observe app:// load failures instead of leaving them as unhandled async work.",
-);
-expect(
-  /await\s+SOFTWARE_LOG_WINDOW\.loadURL\(\s*getAssetUrl\("softwareLog\.html"\)\s*\)/.test(
-    files.softwareLog,
-  ),
-  "SOFTWARELOG-LOADURL-NOT-AWAITED",
-  "medium",
-  "Software log window creation should observe app:// load failures instead of leaving them as unhandled async work.",
+  "Console window creation should observe app:// load failures instead of leaving them as unhandled async work.",
 );
 
 expect(
@@ -93,6 +83,46 @@ expect(
   "LOADING-VIEW-LIFECYCLE-CONTRACT-BROKEN",
   "high",
   "attachLoadingView should remove the overlay on successful or failed target-window load and expose isRemoved for runtime smoke checks.",
+);
+
+expectRoute("/status", "status");
+expectRoute("/settings/basic", "settingsBasic");
+expectRoute("/print-log", "printLog");
+expectRoute("/software-log", "softwareLog");
+
+expectBridge("hiprintPrintLog", [
+  '"request-logs"',
+  '"clear-logs"',
+  '"reprint"',
+  "onPrintLogs",
+]);
+expectBridge("hiprintSoftwareLog", [
+  '"software-log:list-dates"',
+  '"software-log:read"',
+  '"software-log:open-folder"',
+  '"software-log:clear"',
+]);
+expectBridge("hiprintConsole", ['"console:navigate"', "onNavigate"]);
+
+expect(
+  /ipcMain\.on\("request-logs",\s*fetchPrintLogs\)/.test(files.consoleIpc) &&
+    /ipcMain\.on\("clear-logs",\s*clearPrintLogs\)/.test(files.consoleIpc) &&
+    /ipcMain\.on\("reprint",\s*rePrint\)/.test(files.consoleIpc),
+  "CONSOLE-PRINTLOG-IPC-MISSING",
+  "high",
+  "Console IPC should register the print-log request, clear, and reprint channels before the console view uses them.",
+);
+
+expect(
+  /ipcMain\.handle\("software-log:list-dates"/.test(files.consoleIpc) &&
+    /ipcMain\.handle\("software-log:read"/.test(files.consoleIpc) &&
+    /ipcMain\.handle\("software-log:clear"/.test(files.consoleIpc) &&
+    /ipcMain\.on\("software-log:open-folder",\s*openFolder\)/.test(
+      files.consoleIpc,
+    ),
+  "CONSOLE-SOFTWARELOG-IPC-MISSING",
+  "high",
+  "Console IPC should register the software-log list/read/clear/open-folder channels before the console view uses them.",
 );
 
 const restartLabelIndex = files.main.indexOf('label: "重启软件"');
@@ -119,11 +149,11 @@ expect(
 expect(
   indexOfOrMinusOne(files.main, /label:\s*"软件日志"/) >= 0 &&
     indexOfOrMinusOne(files.main, /label:\s*"打印记录"/) >= 0 &&
-    /softwareLogSetup\(\)/.test(files.main) &&
-    /printLogSetup\(\)/.test(files.main),
+    /showConsole\("\/software-log"\)/.test(files.main) &&
+    /showConsole\("\/print-log"\)/.test(files.main),
   "TRAY-LOG-WINDOW-ENTRIES-MISSING",
   "medium",
-  "The tray menu should keep direct entries for software logs and print records.",
+  "The tray menu should route software logs and print records into the console SPA routes.",
 );
 
 const result = {

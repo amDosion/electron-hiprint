@@ -46,7 +46,6 @@ ipcMain.on("hiprint:settings-snapshot", (event) => {
     exportDirectory: { enabled: false },
   };
 });
-ipcMain.on("setContentSize", () => {});
 ipcMain.on("request-logs", (event) => {
   event.sender.send("print-logs", { rows: [], total: 0 });
 });
@@ -94,6 +93,7 @@ async function waitUntil(check, timeoutMs) {
 async function probeWindow({
   name,
   asset,
+  hash = "",
   preload,
   width = 1000,
   height = 640,
@@ -111,7 +111,7 @@ async function probeWindow({
     },
   });
 
-  const step = { name, events: [], consoleErrors: [] };
+  const step = { name, hash, events: [], consoleErrors: [] };
   win.webContents.on("dom-ready", () => step.events.push("dom-ready"));
   win.webContents.on("did-finish-load", () =>
     step.events.push("did-finish-load"),
@@ -134,7 +134,7 @@ async function probeWindow({
     getAssetUrl("loading.html"),
   );
 
-  await win.loadURL(getAssetUrl(asset));
+  await win.loadURL(`${getAssetUrl(asset)}${hash}`);
   await wait(500);
 
   step.overlayDestroyed = overlay.isRemoved();
@@ -148,6 +148,7 @@ async function probeWindow({
     const bridgeName = ${JSON.stringify(bridgeName || "")};
     return {
       origin: location.origin,
+      hash: location.hash,
       appChildCount: document.querySelector('#app')?.children.length ?? -1,
       hasBridge: bridgeName ? typeof window[bridgeName] === 'object' && window[bridgeName] !== null : true
     };
@@ -169,37 +170,41 @@ app.whenReady().then(async () => {
   try {
     result.steps.push(
       await probeWindow({
-        name: "index",
-        asset: "index.html",
-        preload: path.join(REPO_ROOT, "src/preload/index.js"),
-        width: 500,
-        height: 300,
+        name: "console-status",
+        asset: "console.html",
+        hash: "#/status",
+        preload: path.join(REPO_ROOT, "src/preload/console.js"),
+        width: 1080,
+        height: 640,
         bridgeName: "hiprintIndex",
       }),
     );
     result.steps.push(
       await probeWindow({
-        name: "set",
-        asset: "set.html",
-        preload: path.join(REPO_ROOT, "src/preload/set.js"),
-        width: 520,
-        height: 720,
+        name: "console-settings",
+        asset: "console.html",
+        hash: "#/settings/basic",
+        preload: path.join(REPO_ROOT, "src/preload/console.js"),
+        width: 1080,
+        height: 640,
         bridgeName: "hiprintSet",
       }),
     );
     result.steps.push(
       await probeWindow({
-        name: "printLog",
-        asset: "printLog.html",
-        preload: path.join(REPO_ROOT, "src/preload/printLog.js"),
+        name: "console-print-log",
+        asset: "console.html",
+        hash: "#/print-log",
+        preload: path.join(REPO_ROOT, "src/preload/console.js"),
         bridgeName: "hiprintPrintLog",
       }),
     );
     result.steps.push(
       await probeWindow({
-        name: "softwareLog",
-        asset: "softwareLog.html",
-        preload: path.join(REPO_ROOT, "src/preload/softwareLog.js"),
+        name: "console-software-log",
+        asset: "console.html",
+        hash: "#/software-log",
+        preload: path.join(REPO_ROOT, "src/preload/console.js"),
         bridgeName: "hiprintSoftwareLog",
       }),
     );
@@ -212,6 +217,10 @@ app.whenReady().then(async () => {
       if (step.probe.origin !== "app://bundle") {
         result.failed = true;
         step.failure = "origin-mismatch";
+      }
+      if (step.probe.hash !== step.hash && step.hash) {
+        result.failed = true;
+        step.failure = "route-mismatch";
       }
       if (step.probe.appChildCount < 1) {
         result.failed = true;

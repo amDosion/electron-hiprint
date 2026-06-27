@@ -38,21 +38,21 @@ function check(id, file, predicate, detail) {
 // C-1：hiprint:store-get 必须有 key 白名单，且不再无条件 store.get(key)
 check(
   "SEC-C1-STORE-GET-ALLOWLIST",
-  "main.js",
+  "src/console-ipc.js",
   (src) =>
     src.includes("STORE_GET_ALLOWED_KEYS") &&
     /STORE_GET_ALLOWED_KEYS\.has\(\s*key\s*\)/.test(src),
-  "main.js 的 hiprint:store-get 缺少 key 白名单，可能泄露 token/transitToken",
+  "src/console-ipc.js 的 hiprint:store-get 缺少 key 白名单，可能泄露 token/transitToken",
 );
 
-// C-2：printLog 必须经 buildSafeLogQuery 守卫，不得再直接 join condition
+// C-2：打印记录查询必须经 buildSafeLogQuery 守卫，不得再直接 join condition
 check(
   "SEC-C2-LOGQUERY-GUARD",
-  "src/printLog.js",
+  "src/console-ipc.js",
   (src) =>
     src.includes("buildSafeLogQuery") &&
     !src.includes('" WHERE " + condition.join'),
-  "src/printLog.js 未使用 buildSafeLogQuery 守卫，存在 SQL 注入风险",
+  "src/console-ipc.js 未使用 buildSafeLogQuery 守卫，存在 SQL 注入风险",
 );
 
 // C-3：url_pdf 下载前必须做 SSRF 校验 + DNS 重绑定校验
@@ -87,11 +87,11 @@ check(
 // H-2：openDirectory 必须校验是目录后才 openPath
 check(
   "SEC-H2-OPENDIR-ISDIR",
-  "src/set.js",
+  "src/console-ipc.js",
   (src) =>
     /isDirectory\(\)/.test(src) &&
     /openDirectory[\s\S]{0,200}statSync/.test(src),
-  "src/set.js openDirectory 未校验目录，可能执行任意文件",
+  "src/console-ipc.js openDirectory 未校验目录，可能执行任意文件",
 );
 
 const observed = risks.length;

@@ -38,7 +38,7 @@ const failures = [];
 
 // 1) 正常请求：必须解析为 assets/ 下确切的绝对路径。
 const positiveCases = [
-  ["plain html", "app://bundle/index.html", "index.html"],
+  ["plain html", "app://bundle/console.html", "console.html"],
   ["nested asset", "app://bundle/css/print-lock.css", "css/print-lock.css"],
   ["encoded space in name", "app://bundle/a%20b.js", "a b.js"],
 ];
@@ -58,8 +58,8 @@ for (const [desc, url, rel] of positiveCases) {
 
 // 2) 非法请求：必须返回 null（主机不符 / 协议不符 / 空路径 / 编码穿越逃逸）。
 const rejectCases = [
-  ["wrong host", "app://evil/index.html"],
-  ["wrong scheme", "file://bundle/index.html"],
+  ["wrong host", "app://evil/console.html"],
+  ["wrong scheme", "file://bundle/console.html"],
   ["empty path slash", "app://bundle/"],
   ["empty path bare", "app://bundle"],
   ["encoded slash escape", "app://bundle/..%2f..%2f..%2fmain.js"],
@@ -80,8 +80,8 @@ const invariantCases = [
   "app://bundle/....//....//main.js",
   "app://bundle/..\\..\\main.js",
   "app://bundle/%2e%2e/%2e%2e/main.js",
-  "app://bundle/./././index.html",
-  "app://bundle/sub/../index.html",
+  "app://bundle/./././console.html",
+  "app://bundle/sub/../console.html",
 ];
 for (const url of invariantCases) {
   let got;

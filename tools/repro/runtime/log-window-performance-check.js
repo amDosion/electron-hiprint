@@ -68,7 +68,6 @@ function installCommonIpc() {
       exportDirectory: { enabled: false },
     };
   });
-  ipcMain.on("setContentSize", () => {});
   ipcMain.on("clear-logs", () => {});
   ipcMain.on("reprint", () => {});
   ipcMain.on("software-log:open-folder", () => {});
@@ -138,10 +137,18 @@ async function waitFor(check, timeoutMs) {
   return { ok: false, ms: elapsed(start), value: null };
 }
 
-async function probeWindow({ name, asset, preload, bridgeName, isIpcSettled }) {
+async function probeWindow({
+  name,
+  asset,
+  hash = "",
+  preload,
+  bridgeName,
+  isIpcSettled,
+}) {
   const start = now();
   const step = {
     name,
+    hash,
     events: {},
     consoleErrors: [],
     failedLoads: [],
@@ -181,7 +188,7 @@ async function probeWindow({ name, asset, preload, bridgeName, isIpcSettled }) {
   });
 
   try {
-    await win.loadURL(getAssetUrl(asset));
+    await win.loadURL(`${getAssetUrl(asset)}${hash}`);
     step.events.loadUrlResolved = elapsed(start);
   } catch (error) {
     step.loadUrlError = String((error && error.stack) || error);
@@ -196,16 +203,17 @@ async function probeWindow({ name, asset, preload, bridgeName, isIpcSettled }) {
     () =>
       win.webContents.executeJavaScript(`(() => {
         const bridgeName = ${JSON.stringify(bridgeName)};
-        const rows = document.querySelectorAll('.log-row, .el-table__body tr').length;
+        const rows = document.querySelectorAll('.log-row, .table-wrap table.table tbody tr:not(.empty-row), .el-table__body tr').length;
         const softwareReady = Boolean(document.querySelector('.footer'));
         const printReady = Boolean(document.querySelector('.pagination'))
-          && Boolean(document.querySelector('.table'))
-          && (rows > 0 || Boolean(document.querySelector('.el-table__empty-block')));
+          && Boolean(document.querySelector('.table-wrap table.table'))
+          && (rows > 0 || Boolean(document.querySelector('.empty-row, .el-table__empty-block')));
         const ready = ${JSON.stringify(name)} === 'softwareLog' ? softwareReady : printReady;
         return {
           ready,
           title: document.title,
           origin: location.origin,
+          hash: location.hash,
           appChildCount: document.querySelector('#app')?.children.length || 0,
           hasBridge: typeof window[bridgeName] === 'object' && window[bridgeName] !== null,
           rows
@@ -259,8 +267,9 @@ app.whenReady().then(async () => {
     result.windows.push(
       await probeWindow({
         name: "softwareLog",
-        asset: "softwareLog.html",
-        preload: path.join(REPO_ROOT, "src/preload/softwareLog.js"),
+        asset: "console.html",
+        hash: "#/software-log",
+        preload: path.join(REPO_ROOT, "src/preload/console.js"),
         bridgeName: "hiprintSoftwareLog",
         isIpcSettled: () => result.sql.softwareRead !== undefined,
       }),
@@ -268,8 +277,9 @@ app.whenReady().then(async () => {
     result.windows.push(
       await probeWindow({
         name: "printLog",
-        asset: "printLog.html",
-        preload: path.join(REPO_ROOT, "src/preload/printLog.js"),
+        asset: "console.html",
+        hash: "#/print-log",
+        preload: path.join(REPO_ROOT, "src/preload/console.js"),
         bridgeName: "hiprintPrintLog",
         isIpcSettled: () =>
           result.sql.printRows !== undefined && result.sql.printCount !== undefined,
@@ -281,7 +291,13 @@ app.whenReady().then(async () => {
   }
 
   for (const step of result.windows) {
-    if (!step.probe || !step.probe.hasBridge || step.failedLoads.length || step.consoleErrors.length) {
+    if (
+      !step.probe ||
+      step.probe.hash !== step.hash ||
+      !step.probe.hasBridge ||
+      step.failedLoads.length ||
+      step.consoleErrors.length
+    ) {
       result.failed = true;
     }
   }

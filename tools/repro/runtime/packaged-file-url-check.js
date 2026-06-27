@@ -6,10 +6,10 @@ const path = require("path");
 const repoRoot = path.resolve(__dirname, "../../..");
 const files = [
   "main.js",
-  "src/set.js",
+  "src/app-window.js",
+  "src/console-ipc.js",
   "src/print.js",
   "src/render.js",
-  "src/printLog.js",
 ];
 const risks = [];
 
@@ -108,10 +108,6 @@ const packageJson = JSON.parse(
 const asarUnpack = new Set(packageJson.build && packageJson.build.asarUnpack);
 [
   "assets/**",
-  "node_modules/jquery/dist/jquery.min.js",
-  "node_modules/nzh/dist/nzh.min.js",
-  "node_modules/bwip-js/dist/bwip-js.js",
-  "node_modules/jsbarcode/dist/JsBarcode.all.min.js",
 ].forEach((pattern) => {
   if (!asarUnpack.has(pattern)) {
     risks.push({

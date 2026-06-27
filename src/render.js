@@ -8,11 +8,14 @@ const dayjs = require("dayjs");
 
 const { getAssetUrl } = require("./asset-url");
 const { store, getCurrentPrintStatusByName } = require("../tools/utils");
+const { formatPrinterStatus } = require("./printer-status");
+const { writePrintLog } = require("./print-log-writer");
+const { completeRenderTask } = require("./runner-task");
+const { resolvePrinterReadiness } = require("./printer-readiness-resolver");
 const {
-  getPrinterReadiness,
-  formatPrinterStatus,
-} = require("./printer-status");
-const db = require("../tools/database");
+  resolvePrintPageSize,
+  withResolvedPageSize,
+} = require("./print-page-size");
 
 // 这是 1920 * 1080 屏幕常规工作区域尺寸
 let windowWorkArea = {
@@ -246,8 +249,7 @@ async function capturePage(event, data) {
         replyId: data.replyId,
       });
   } finally {
-    RENDER_RUNNER_DONE[data.taskId]();
-    delete RENDER_RUNNER_DONE[data.taskId];
+    completeRenderTask(data, { doneMap: RENDER_RUNNER_DONE });
   }
 }
 
@@ -256,25 +258,30 @@ async function capturePage(event, data) {
  * @param {IpcMainEvent} event 事件
  * @param {PrintToPDFData} data 打印数据
  */
-function printToPDF(event, data) {
+async function printToPDF(event, data) {
   let socket = null;
   if (data.clientType === "local") {
     socket = SOCKET_SERVER.sockets.sockets.get(data.socketId);
   } else {
     socket = SOCKET_CLIENT;
   }
+  const effectivePageSize = await resolvePrintPageSize(
+    RENDER_WINDOW.webContents,
+    data,
+  );
+  const printData = withResolvedPageSize(data, effectivePageSize);
   RENDER_WINDOW.webContents
     .printToPDF({
-      landscape: data.landscape ?? false, // 横向打印
-      displayHeaderFooter: data.displayHeaderFooter ?? false, // 显示页眉页脚
-      printBackground: data.printBackground ?? true, // 打印背景色
-      scale: data.scale ?? 1, // 渲染比例 默认 1
-      pageSize: data.pageSize,
-      margins: data.margins, // 边距
-      pageRanges: data.pageRanges, // 打印页数范围
-      headerTemplate: data.headerTemplate, // 页头模板 (html)
-      footerTemplate: data.footerTemplate, // 页脚模板 (html)
-      preferCSSPageSize: data.preferCSSPageSize ?? false,
+      landscape: printData.landscape ?? false, // 横向打印
+      displayHeaderFooter: printData.displayHeaderFooter ?? false, // 显示页眉页脚
+      printBackground: printData.printBackground ?? true, // 打印背景色
+      scale: printData.scale ?? 1, // 渲染比例 默认 1
+      pageSize: printData.pageSize,
+      margins: printData.margins, // 边距
+      pageRanges: printData.pageRanges, // 打印页数范围
+      headerTemplate: printData.headerTemplate, // 页头模板 (html)
+      footerTemplate: printData.footerTemplate, // 页脚模板 (html)
+      preferCSSPageSize: printData.preferCSSPageSize ?? false,
     })
     .then((buffer) => {
       // 未打包调试模式下将pdf保存到桌面
@@ -311,8 +318,7 @@ function printToPDF(event, data) {
         });
     })
     .finally(() => {
-      RENDER_RUNNER_DONE[data.taskId]();
-      delete RENDER_RUNNER_DONE[data.taskId];
+      completeRenderTask(data, { doneMap: RENDER_RUNNER_DONE });
     });
 }
 
@@ -329,37 +335,25 @@ async function printFun(event, data) {
   } else {
     socket = SOCKET_CLIENT;
   }
-  const printers = await RENDER_WINDOW.webContents.getPrintersAsync();
-  let defaultPrinter = data.printer || store.get("defaultPrinter", "");
-  const readiness = getPrinterReadiness({
-    platform: process.platform,
-    printers,
-    printerName: defaultPrinter,
+  const { readiness, deviceName } = await resolvePrinterReadiness({
+    webContents: RENDER_WINDOW.webContents,
+    data,
+    store,
     getStatusByName: getCurrentPrintStatusByName,
   });
-  defaultPrinter = readiness.printerName || defaultPrinter;
-  let deviceName = defaultPrinter;
 
   const logPrintResult = (status, errorMessage = "") => {
-    db.run(
-      `INSERT INTO print_logs (socketId, clientType, printer, templateId, data, pageNum, status, rePrintAble, errorMessage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        socket?.id,
-        data.clientType,
-        deviceName,
-        data.templateId,
-        JSON.stringify(data),
-        data.pageNum,
-        status,
-        data.rePrintAble ?? 1,
-        errorMessage,
-      ],
-      (err) => {
-        if (err) {
-          console.error("Failed to log print result", err);
-        }
-      },
-    );
+    writePrintLog({
+      socketId: socket?.id,
+      clientType: data.clientType,
+      printer: deviceName,
+      templateId: data.templateId,
+      data,
+      pageNum: data.pageNum,
+      status,
+      rePrintAble: data.rePrintAble,
+      errorMessage,
+    });
   };
 
   if (!readiness.ready) {
@@ -376,33 +370,37 @@ async function printFun(event, data) {
         templateId: data.templateId,
         replyId: data.replyId,
       });
-    // 通过 taskMap 调用 task done 回调
-    RENDER_RUNNER_DONE[data.taskId]();
-    delete RENDER_RUNNER_DONE[data.taskId];
+    completeRenderTask(data, { doneMap: RENDER_RUNNER_DONE });
     return;
   }
+
+  const effectivePageSize = await resolvePrintPageSize(
+    RENDER_WINDOW.webContents,
+    data,
+  );
+  const printData = withResolvedPageSize(data, effectivePageSize);
 
   // 打印 详见https://www.electronjs.org/zh/docs/latest/api/web-contents
   RENDER_WINDOW.webContents.print(
     {
-      silent: data.silent ?? true, // 静默打印
-      printBackground: data.printBackground ?? true, // 是否打印背景
+      silent: printData.silent ?? true, // 静默打印
+      printBackground: printData.printBackground ?? true, // 是否打印背景
       deviceName: deviceName, // 打印机名称
-      color: data.color ?? true, // 是否打印颜色
-      margins: data.margins ?? {
+      color: printData.color ?? true, // 是否打印颜色
+      margins: printData.margins ?? {
         marginType: "none",
       }, // 边距
-      landscape: data.landscape ?? false, // 是否横向打印
-      scaleFactor: data.scaleFactor ?? 100, // 打印缩放比例
-      pagesPerSheet: data.pagesPerSheet ?? 1, // 每张纸的页数
-      collate: data.collate ?? true, // 是否排序
-      copies: data.copies ?? 1, // 打印份数
-      pageRanges: data.pageRanges ?? {}, // 打印页数
-      duplexMode: data.duplexMode, // 打印模式 simplex,shortEdge,longEdge
-      dpi: data.dpi ?? 300, // 打印机DPI
-      header: data.header, // 打印头
-      footer: data.footer, // 打印尾
-      pageSize: data.pageSize, // 打印纸张
+      landscape: printData.landscape ?? false, // 是否横向打印
+      scaleFactor: printData.scaleFactor ?? 100, // 打印缩放比例
+      pagesPerSheet: printData.pagesPerSheet ?? 1, // 每张纸的页数
+      collate: printData.collate ?? true, // 是否排序
+      copies: printData.copies ?? 1, // 打印份数
+      pageRanges: printData.pageRanges ?? {}, // 打印页数
+      duplexMode: printData.duplexMode, // 打印模式 simplex,shortEdge,longEdge
+      dpi: printData.dpi ?? 300, // 打印机DPI
+      header: printData.header, // 打印头
+      footer: printData.footer, // 打印尾
+      pageSize: printData.pageSize, // 打印纸张
     },
     (success, failureReason) => {
       if (socket) {
@@ -435,10 +433,7 @@ async function printFun(event, data) {
           });
         }
       }
-      // 通过 taskMap 调用 task done 回调
-      RENDER_RUNNER_DONE[data.taskId]();
-      // 删除 task
-      delete RENDER_RUNNER_DONE[data.taskId];
+      completeRenderTask(data, { doneMap: RENDER_RUNNER_DONE });
     },
   );
 }

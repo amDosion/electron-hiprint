@@ -20,6 +20,39 @@ function record(risks, id, ok, detail) {
   }
 }
 
+function uniqueSorted(values) {
+  return Array.from(new Set(values)).sort();
+}
+
+function sameSet(actual, expected) {
+  const left = uniqueSorted(actual);
+  const right = uniqueSorted(expected);
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
+function formatList(values) {
+  return uniqueSorted(values).join(", ");
+}
+
+function getPackageBuildTargets(scripts) {
+  return Object.keys(scripts).filter(
+    (name) => /^build-/.test(name) && name !== "build-all",
+  );
+}
+
+function getWorkflowMatrixValues(workflowText, fieldName) {
+  const pattern = new RegExp(`^\\s*${fieldName}:\\s*([^\\s#]+)`, "gm");
+  const values = [];
+  let match;
+  while ((match = pattern.exec(workflowText))) {
+    values.push(match[1].replace(/^["']|["']$/g, ""));
+  }
+  return values;
+}
+
 function main() {
   const risks = [];
   const packageJson = JSON.parse(read("package.json"));
@@ -34,6 +67,20 @@ function main() {
   const ciWorkflow = read(".github/workflows/ci.yml");
   const autoTagWorkflow = read(".github/workflows/plugin-bump.yml");
   const electronScriptRunner = read("tools/repro/runtime/run-electron-script.js");
+  const packageBuildTargets = getPackageBuildTargets(scripts);
+  const installerMatrixScripts = getWorkflowMatrixValues(
+    installersWorkflow,
+    "script",
+  );
+  const releaseMatrixScripts = getWorkflowMatrixValues(releaseWorkflow, "script");
+  const installerMatrixArtifacts = getWorkflowMatrixValues(
+    installersWorkflow,
+    "artifact",
+  );
+  const releaseMatrixArtifacts = getWorkflowMatrixValues(
+    releaseWorkflow,
+    "artifact",
+  );
 
   const directBuilderScripts = Object.entries(scripts).filter(
     ([name, value]) => {
@@ -103,15 +150,17 @@ function main() {
       installersWorkflow.includes("macos-15-intel") &&
       installersWorkflow.includes("macos-15") &&
       installersWorkflow.includes("ubuntu-latest") &&
-      installersWorkflow.includes("build-w-64") &&
-      installersWorkflow.includes("build-w") &&
-      installersWorkflow.includes("build-m-arm64") &&
-      installersWorkflow.includes("build-m") &&
-      installersWorkflow.includes("build-m-universal") &&
-      installersWorkflow.includes("build-l") &&
-      installersWorkflow.includes("build-l-arm64") &&
-      installersWorkflow.includes("build-kylin"),
+      sameSet(installerMatrixScripts, packageBuildTargets),
     "GitHub Actions should provide a multi-platform installer artifact workflow with an explicit Windows runner label instead of a Windows-only workflow or floating windows-latest label.",
+  );
+
+  record(
+    risks,
+    "INSTALLER-MATRIX-SCRIPTS-DRIFT",
+    sameSet(installerMatrixScripts, packageBuildTargets),
+    `Installer workflow matrix scripts should exactly match package build targets. package.json=[${formatList(
+      packageBuildTargets,
+    )}], installers.yml=[${formatList(installerMatrixScripts)}]`,
   );
 
   record(
@@ -179,7 +228,9 @@ function main() {
       !releaseWorkflow.includes("windows-latest") &&
       releaseWorkflow.includes("windows-2025-vs2026") &&
       releaseWorkflow.includes("macos-15-intel") &&
-      releaseWorkflow.includes("build-kylin") &&
+      sameSet(releaseMatrixScripts, packageBuildTargets) &&
+      sameSet(releaseMatrixScripts, installerMatrixScripts) &&
+      sameSet(releaseMatrixArtifacts, installerMatrixArtifacts) &&
       releaseWorkflow.includes("[0-9]*.[0-9]*.[0-9]*") &&
       !releaseWorkflow.includes("actions/download-artifact@v6") &&
       releaseWorkflow.includes("actions/download-artifact@v8") &&
@@ -189,6 +240,27 @@ function main() {
         "out/hiprint_${{ matrix.artifact }}-*.exe.blockmap",
       ),
     "The tag release workflow should use the same multi-platform build scripts, artifact checks, and Node 24-compatible release actions.",
+  );
+
+  record(
+    risks,
+    "RELEASE-MATRIX-SCRIPTS-DRIFT",
+    sameSet(releaseMatrixScripts, packageBuildTargets) &&
+      sameSet(releaseMatrixScripts, installerMatrixScripts),
+    `Release workflow matrix scripts should exactly match package build targets and installer workflow scripts. package.json=[${formatList(
+      packageBuildTargets,
+    )}], installers.yml=[${formatList(
+      installerMatrixScripts,
+    )}], release.yml=[${formatList(releaseMatrixScripts)}]`,
+  );
+
+  record(
+    risks,
+    "RELEASE-MATRIX-ARTIFACTS-DRIFT",
+    sameSet(releaseMatrixArtifacts, installerMatrixArtifacts),
+    `Release workflow artifacts should match installer workflow artifacts. installers.yml=[${formatList(
+      installerMatrixArtifacts,
+    )}], release.yml=[${formatList(releaseMatrixArtifacts)}]`,
   );
 
   record(

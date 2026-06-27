@@ -1,5 +1,7 @@
 # 日志窗口转圈复发交接
 
+> 历史上下文：这份交接写于 console SPA 合并之前，文中的 `src/printLog.js`、`src/softwareLog.js`、`printLog.html`、`softwareLog.html` 等路径是当时入口。当前运行时真源见 `docs/refactor/console-spa-parity.md`：日志页由 `console.html#/print-log` 与 `console.html#/software-log` 承载。
+
 ## 交接状态
 
 状态：未修复，不能关单。

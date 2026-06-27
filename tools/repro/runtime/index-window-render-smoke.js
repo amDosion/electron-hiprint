@@ -1,7 +1,7 @@
 "use strict";
 
-// index 主窗口 SFC 渲染冒烟（需真实 Electron）。
-// 经 app:// 加载已构建的 assets/index.html，附真实 src/preload/index.js（暴露 hiprintIndex 桥），
+// console 状态 route 渲染冒烟（需真实 Electron）。
+// 经 app:// 加载已构建的 assets/console.html#/status，附真实 src/preload/console.js（暴露 hiprintIndex 桥），
 // 断言：窗口加载成功、Vue 根挂载、品牌/状态文案出现、无脚本错误。
 // 不依赖主进程 IPC 应答（getMachineId 等无人应答属正常，仅令字段为空，不阻碍渲染）。
 // 运行：npx electron tools/repro/runtime/index-window-render-smoke.js
@@ -15,14 +15,25 @@ const { app, BrowserWindow, ipcMain } = electron;
 
 app.getAppPath = () => REPO_ROOT;
 
-// preload/index.js 在加载时用 sendSync 同步取 title/version（阻塞渲染直到主进程应答）。
-// harness 充当主进程，必须应答这两个同步通道，否则导航会无限挂起。
+// console preload 在加载时用 sendSync 同步取 title/version/settings（阻塞渲染直到主进程应答）。
+// harness 充当主进程，必须应答这些同步通道，否则导航会无限挂起。
 // 其余通道为异步 send（getMachineId/getAddress/notification 等），无需应答即不阻塞。
 ipcMain.on("hiprint:store-get", (event, key) => {
   event.returnValue = key === "mainTitle" ? "Electron-hiprint" : undefined;
 });
 ipcMain.on("hiprint:app-version", (event) => {
   event.returnValue = "1.0.29";
+});
+ipcMain.on("hiprint:settings-snapshot", (event) => {
+  event.returnValue = {
+    port: 17521,
+    token: "",
+    nickName: "",
+    closeType: "tray",
+    pdfPath: "C:/ProgramData/hiprint/pdf",
+    defaultPrinter: "",
+    exportDirectory: { enabled: false },
+  };
 });
 
 const {
@@ -55,7 +66,7 @@ app.whenReady().then(async () => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      preload: path.join(REPO_ROOT, "src/preload/index.js"),
+      preload: path.join(REPO_ROOT, "src/preload/console.js"),
     },
   });
 
@@ -71,8 +82,8 @@ app.whenReady().then(async () => {
   });
 
   try {
-    await win.loadURL("app://bundle/index.html");
-    result.steps.push({ step: "loaded-index-html", ok: true });
+    await win.loadURL("app://bundle/console.html#/status");
+    result.steps.push({ step: "loaded-status-route", ok: true });
 
     // 给 Vue 一帧时间挂载
     await new Promise((r) => setTimeout(r, 400));
@@ -80,15 +91,15 @@ app.whenReady().then(async () => {
     const probe = await win.webContents.executeJavaScript(`(async () => {
       const out = {};
       out.origin = location.origin;
+      out.hash = location.hash;
       out.hasBridge = typeof window.hiprintIndex === 'object' && window.hiprintIndex !== null;
       const appEl = document.querySelector('#app');
       out.appChildCount = appEl ? appEl.children.length : -1;
-      out.hasBox = !!document.querySelector('.box');
-      out.brandText = (document.querySelector('.app-brand') || {}).textContent || '';
-      out.tileCount = document.querySelectorAll('.tile').length;
-      // el-icon 是否真正渲染出 svg（验证按需导入的图标生效）
-      out.svgCount = document.querySelectorAll('.app-topbar svg, .hero-card svg').length;
-      out.statusPillText = (document.querySelector('.status-pill') || {}).textContent || '';
+      out.shellNavLabels = Array.from(document.querySelectorAll('.shell-nav')).map((el) => el.textContent.trim());
+      out.activeShellNav = (document.querySelector('.shell-nav.active') || {}).textContent || '';
+      out.statusHeading = (document.querySelector('.status-title') || document.querySelector('h1') || {}).textContent || '';
+      out.cardCount = document.querySelectorAll('.status-card, .metric-card, .info-card').length;
+      out.svgCount = document.querySelectorAll('svg').length;
       return out;
     })()`);
     result.probe = probe;
@@ -97,28 +108,32 @@ app.whenReady().then(async () => {
       result.failed = true;
       result.steps.push({ step: "origin-mismatch", got: probe.origin });
     }
+    if (probe.hash !== "#/status") {
+      result.failed = true;
+      result.steps.push({ step: "route-mismatch", got: probe.hash });
+    }
     if (!probe.hasBridge) {
       result.failed = true;
       result.steps.push({ step: "bridge-missing" });
     }
-    if (!probe.hasBox || probe.appChildCount < 1) {
+    if (probe.appChildCount < 1) {
       result.failed = true;
       result.steps.push({
         step: "vue-not-mounted",
         childCount: probe.appChildCount,
       });
     }
-    if (!/打印服务/.test(probe.brandText)) {
+    if (!Array.isArray(probe.shellNavLabels) || !probe.shellNavLabels.includes("连接状态")) {
       result.failed = true;
-      result.steps.push({ step: "brand-text-missing", got: probe.brandText });
+      result.steps.push({ step: "shell-nav-missing", got: probe.shellNavLabels });
     }
-    if (probe.tileCount !== 4) {
+    if (!/连接状态/.test(probe.activeShellNav || probe.statusHeading || "")) {
       result.failed = true;
-      result.steps.push({ step: "tile-count-wrong", got: probe.tileCount });
-    }
-    if (probe.svgCount < 2) {
-      result.failed = true;
-      result.steps.push({ step: "icons-not-rendered", got: probe.svgCount });
+      result.steps.push({
+        step: "status-route-not-active",
+        active: probe.activeShellNav,
+        heading: probe.statusHeading,
+      });
     }
     if (result.consoleErrors.length > 0) {
       result.failed = true;

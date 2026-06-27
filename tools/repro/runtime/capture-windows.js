@@ -1,21 +1,33 @@
 "use strict";
 
-// 截取已迁移窗口的真实渲染图（需真实 Electron），用于 UI 审查。
-// 经 app:// 加载各窗口 + 真实 preload，capturePage 存 PNG 到 docs/ui-redesign/rendered-*.png。
-// 可选：HIPRINT_CAPTURE_TARGETS=printLog,softwareLog 只截指定窗口；
+// 截取 console SPA 各 route 的真实渲染图（需真实 Electron），用于 UI 审查。
+// 经 app:// 加载 console.html route + 真实 preload，capturePage 存 PNG 到 docs/ui-redesign/rendered-*.png。
+// 可选：HIPRINT_CAPTURE_TARGETS=printLog,softwareLog 只截指定 route；
 //      HIPRINT_CAPTURE_OUT_DIR=.omx/artifacts/ui-capture 输出到临时目录。
 // 运行：npx electron tools/repro/runtime/capture-windows.js
 
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 
 const electron = require("electron");
 const { app, BrowserWindow, ipcMain } = electron;
 
 app.getAppPath = () => REPO_ROOT;
+app.commandLine.appendSwitch("disable-gpu-shader-disk-cache");
 
-// 应答各 preload 的同步取值（mainTitle / rePrint / app-version）
+const USER_DATA_DIR = path.join(
+  os.tmpdir(),
+  `electron-hiprint-capture-${process.pid}`,
+);
+fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+app.setPath("userData", USER_DATA_DIR);
+app.once("will-quit", () => {
+  fs.rmSync(USER_DATA_DIR, { recursive: true, force: true });
+});
+
+// 应答 console preload 的同步取值（mainTitle / rePrint / app-version）
 ipcMain.on("hiprint:store-get", (event, key) => {
   if (key === "mainTitle") event.returnValue = "Electron-hiprint";
   else if (key === "rePrint") event.returnValue = 1;
@@ -35,7 +47,6 @@ ipcMain.on("hiprint:settings-snapshot", (event) => {
     exportDirectory: { enabled: false },
   };
 });
-ipcMain.on("setContentSize", () => {});
 ipcMain.on("request-logs", (event) => {
   event.sender.send("print-logs", {
     rows: buildPrintLogRows(18),
@@ -98,17 +109,31 @@ const TARGET_FILTER = new Set(
     .filter(Boolean),
 );
 const ALL_TARGETS = [
-  { name: "index", preload: "src/preload/index.js", width: 500, height: 300 },
-  { name: "set", preload: "src/preload/set.js", width: 520, height: 720 },
+  {
+    name: "status",
+    route: "#/status",
+    preload: "src/preload/console.js",
+    width: 1080,
+    height: 640,
+  },
+  {
+    name: "settings",
+    route: "#/settings/basic",
+    preload: "src/preload/console.js",
+    width: 1080,
+    height: 640,
+  },
   {
     name: "printLog",
-    preload: "src/preload/printLog.js",
+    route: "#/print-log",
+    preload: "src/preload/console.js",
     width: 1040,
     height: 660,
   },
   {
     name: "softwareLog",
-    preload: "src/preload/softwareLog.js",
+    route: "#/software-log",
+    preload: "src/preload/console.js",
     width: 1040,
     height: 620,
   },
@@ -117,6 +142,7 @@ const TARGETS =
   TARGET_FILTER.size > 0 ? ALL_TARGETS.filter((target) => TARGET_FILTER.has(target.name)) : ALL_TARGETS;
 
 async function captureOne(target) {
+  const failedLoads = [];
   const win = new BrowserWindow({
     width: target.width,
     height: target.height,
@@ -130,20 +156,31 @@ async function captureOne(target) {
       preload: path.join(REPO_ROOT, target.preload),
     },
   });
-  await win.loadURL(`app://bundle/${target.name}.html`);
+  win.webContents.on("did-fail-load", (_event, code, desc, url) => {
+    failedLoads.push({ code, desc, url });
+  });
+  await win.loadURL(`app://bundle/console.html${target.route}`);
   // 等待挂载 + 首帧绘制
   await new Promise((r) => setTimeout(r, 900));
+  const probe = await win.webContents.executeJavaScript(`(() => ({
+    origin: location.origin,
+    hash: location.hash,
+    appChildren: document.querySelector('#app')?.children.length ?? -1
+  }))()`);
   const image = await win.capturePage();
   const outPath = path.join(OUT_DIR, `rendered-${target.name}.png`);
   fs.writeFileSync(outPath, image.toPNG());
   win.close();
-  return outPath;
+  return { outPath, route: target.route, probe, failedLoads };
 }
 
 let finished = false;
 function finish(saved, code) {
   if (finished) return;
   finished = true;
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.destroy();
+  }
   console.log("CAPTURE_DONE " + JSON.stringify(saved));
   app.exit(code);
   const forceExit = setTimeout(() => process.exit(code), 1000);
@@ -159,15 +196,26 @@ app.whenReady().then(async () => {
   registerAssetProtocol();
   if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
   const saved = [];
+  let failed = false;
   for (const target of TARGETS) {
     try {
-      saved.push(await captureOne(target));
+      const step = await captureOne(target);
+      if (
+        step.probe.origin !== "app://bundle" ||
+        step.probe.hash !== target.route ||
+        step.probe.appChildren < 1 ||
+        step.failedLoads.length > 0
+      ) {
+        failed = true;
+      }
+      saved.push({ name: target.name, ...step });
     } catch (err) {
-      console.log("CAPTURE_ERROR " + target.name + " " + String(err));
+      failed = true;
+      saved.push({ name: target.name, error: String(err) });
     }
   }
   clearTimeout(killTimer);
-  finish(saved, 0);
+  finish(saved, failed ? 1 : 0);
 });
 
 app.on("window-all-closed", () => {});

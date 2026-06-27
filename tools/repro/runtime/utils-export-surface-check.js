@@ -6,6 +6,14 @@ const path = require("path");
 const repoRoot = path.resolve(__dirname, "../../..");
 const utilsPath = path.join(repoRoot, "tools/utils.js");
 const utilsJs = fs.readFileSync(utilsPath, "utf8");
+const clientStatusJs = fs.readFileSync(
+  path.join(repoRoot, "tools/client-status.js"),
+  "utf8",
+);
+const fileExportJs = fs.readFileSync(
+  path.join(repoRoot, "tools/file-export.js"),
+  "utf8",
+);
 
 const risks = [];
 const exportsBlock = utilsJs.match(/module\.exports\s*=\s*\{([\s\S]*?)\n\};/);
@@ -24,10 +32,12 @@ function expect(condition, id, detail) {
 }
 
 expect(
-  /function getExportCapability\(\)/.test(utilsJs) &&
-    /fileExport:\s*getExportCapability\(\)/.test(utilsJs),
+  /function getExportCapability\(/.test(fileExportJs) &&
+    /function handleFileExportTask\(/.test(fileExportJs) &&
+    /getExportCapability:\s*getFileExportCapability/.test(utilsJs) &&
+    /fileExport:\s*getExportCapability\(\)/.test(clientStatusJs),
   "EXPORT-CAPABILITY-OWNER-MISSING",
-  "tools/utils.js should keep getExportCapability as the single source for the client file-export capability summary.",
+  "tools/file-export.js should own file-export behavior while tools/utils.js keeps the public capability wrapper.",
 );
 
 expect(

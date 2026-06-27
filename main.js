@@ -405,9 +405,8 @@ function buildTrayMenuTemplate() {
 }
 
 function restartApp() {
-  destroyConsole();
   app.relaunch();
-  app.exit();
+  helper.appQuit();
 }
 
 function updateOnlineUpgradeTrayState(status) {

@@ -1,7 +1,7 @@
 "use strict";
 
 // Static regression for the software-log sqlite-only contract.
-// Run after npm run build:renderer so generated assets are checked too.
+// Run after npm run build:renderer so generated console assets are checked too.
 
 const fs = require("fs");
 const path = require("path");
@@ -13,16 +13,16 @@ function read(relPath) {
 }
 
 // 去 vite-plugin-singlefile 后渲染层改为分块构建：窗口 HTML 只剩 <script src> 外链，
-// 应用代码落在 assets/assets/<窗口>-*.{js,css}。故「构建产物」契约须读 HTML + 其外链 chunk
-// 的合并文本，否则断言会落在已成空壳的 HTML 上而误判。
-function readBuiltBundle(htmlRel, windowPrefix) {
+// 应用代码落在 assets/assets/<chunk>.{js,css}。console SPA 的 route 代码会拆成
+// Console/AppShell 与各 view chunk，所以构建产物契约需要合并相关 chunk 文本。
+function readBuiltBundle(htmlRel, chunkPatterns) {
   let text = read(htmlRel);
   const chunkDir = path.join(REPO_ROOT, "assets", "assets");
   if (fs.existsSync(chunkDir)) {
     for (const name of fs.readdirSync(chunkDir)) {
       if (
-        name.startsWith(windowPrefix + "-") &&
-        (name.endsWith(".js") || name.endsWith(".css"))
+        (name.endsWith(".js") || name.endsWith(".css")) &&
+        chunkPatterns.some((pattern) => pattern.test(name))
       ) {
         text += "\n" + fs.readFileSync(path.join(chunkDir, name), "utf8");
       }
@@ -39,13 +39,14 @@ function contains(text, pattern) {
 
 const files = {
   main: read("main.js"),
-  softwareLogMain: read("src/softwareLog.js"),
+  consoleIpc: read("src/console-ipc.js"),
   softwareLogStore: read("src/software-log-store.js"),
-  settingsMain: read("src/set.js"),
   utils: read("tools/utils.js"),
   database: read("tools/database.js"),
-  softwareLogVue: read("src/renderer/app/windows/softwareLog/App.vue"),
-  settingsVue: read("src/renderer/app/windows/set/App.vue"),
+  softwareLogVue: read(
+    "src/renderer/app/windows/console/views/SoftwareLogView.vue",
+  ),
+  settingsVue: read("src/renderer/app/windows/console/views/SettingsView.vue"),
   softwareLogSmoke: read(
     "tools/repro/runtime/softwarelog-window-render-smoke.js",
   ),
@@ -54,8 +55,15 @@ const files = {
   ),
   loadingSmoke: read("tools/repro/runtime/loading-view-lifecycle-check.js"),
   setSmoke: read("tools/repro/runtime/set-window-render-smoke.js"),
-  assetsSoftwareLog: readBuiltBundle("assets/softwareLog.html", "softwareLog"),
-  assetsSet: readBuiltBundle("assets/set.html", "set"),
+  assetsConsole: readBuiltBundle("assets/console.html", [
+    /^console-/,
+    /^StatusView-/,
+    /^SettingsView-/,
+    /^PrintLogView-/,
+    /^SoftwareLogView-/,
+    /^ConfirmDialog-/,
+    /^bridge-/,
+  ]),
 };
 
 const checks = [];
@@ -145,23 +153,24 @@ expectAbsent(
 );
 
 expect(
-  "software-log-window-opens-database-directory",
+  "console-ipc-opens-database-directory",
   /shell\.openPath\(path\.dirname\(softwareLogStore\.getDatabasePath\(\)\)\)/.test(
-    files.softwareLogMain,
+    files.consoleIpc,
   ),
 );
-expectAbsent("software-log-window-has-no-log-path", "softwareLogMain", [
-  "logPath",
-  "store.get",
+expectAbsent("console-ipc-has-no-file-log-path", "consoleIpc", [
+  'store.get("logPath")',
+  "store.get('logPath')",
   'app.getPath("logs")',
   "app.getPath('logs')",
+  "日志保存路径",
 ]);
 
 expect(
   "settings-save-drops-stale-log-path",
-  /delete\s+nextData\.logPath/.test(files.settingsMain),
+  /delete\s+nextData\.logPath/.test(files.consoleIpc),
 );
-expectAbsent("settings-main-no-log-path-validation", "settingsMain", [
+expectAbsent("settings-main-no-log-path-validation", "consoleIpc", [
   "data.logPath",
   "日志保存路径",
 ]);
@@ -189,12 +198,19 @@ expectAbsent("runtime-smokes-no-log-path-fixtures", "loadingSmoke", [
 ]);
 expectAbsent("settings-smoke-no-log-path-fixture", "setSmoke", ["logPath"]);
 expect(
+  "software-log-smoke-loads-console-route",
+  files.softwareLogSmoke.includes("console.html#/software-log") &&
+    files.softwareLogSmoke.includes("src/preload/console.js"),
+);
+expect(
   "software-log-smoke-asserts-sqlite-footer",
   (files.softwareLogSmoke.includes("sqlite/software_logs") ||
     files.softwareLogSmoke.includes("sqlite\\/software_logs")) &&
     files.softwareLogSmoke.includes("file-log-footer-present"),
 );
-expectAbsent("software-log-smoke-no-log-file-fixture", "softwareLogSmoke", [
+expectAbsent("software-log-smoke-no-old-window-paths", "softwareLogSmoke", [
+  "software" + "Log.html",
+  "src/preload/software" + "Log.js",
   'String(date) + ".log"',
 ]);
 expect(
@@ -206,15 +222,15 @@ expect(
 );
 
 expectAbsent(
-  "built-software-log-asset-no-file-source-wording",
-  "assetsSoftwareLog",
+  "built-console-asset-no-file-source-wording",
+  "assetsConsole",
   ["…/logs/", "暂无日志文件", "打开文件夹"],
 );
 expect(
-  "built-software-log-asset-has-sqlite-source",
-  files.assetsSoftwareLog.includes("sqlite/software_logs"),
+  "built-console-asset-has-sqlite-source",
+  files.assetsConsole.includes("sqlite/software_logs"),
 );
-expectAbsent("built-settings-asset-no-log-path-field", "assetsSet", [
+expectAbsent("built-console-asset-no-log-path-field", "assetsConsole", [
   "logPath",
   "日志路径",
   "日志存储",

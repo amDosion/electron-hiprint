@@ -10,10 +10,12 @@ function readText(relativePath) {
   return fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
 }
 
-const setJs = readText("src/set.js");
 const mainJs = readText("main.js");
-const preloadSetJs = readText("src/preload/set.js");
-const setHtml = readText("assets/set.html");
+const consoleIpcJs = readText("src/console-ipc.js");
+const consolePreloadJs = readText("src/preload/console.js");
+const settingsView = readText(
+  "src/renderer/app/windows/console/views/SettingsView.vue",
+);
 const installerNsh = readText("installer.nsh");
 const updaterPath = path.join(repoRoot, "src/online-update.js");
 const updaterText = readText("src/online-update.js");
@@ -150,18 +152,19 @@ expect(
 );
 
 expect(
-  !/checkOnlineUpgrade/.test(preloadSetJs) &&
-    !/onlineUpdateStatus/.test(preloadSetJs) &&
-    !/checkOnlineUpgrade/.test(setJs),
+  !/checkOnlineUpgrade/.test(consolePreloadJs) &&
+    !/onlineUpdateStatus/.test(consolePreloadJs) &&
+    !/checkOnlineUpgrade/.test(consoleIpcJs) &&
+    !/checkOnlineUpgrade/.test(settingsView),
   "UPDATER-SETTINGS-IPC-STILL-EXPOSED",
   "high",
   "The settings window should not expose the program-level online upgrade IPC channels.",
 );
 
 expect(
-  !/checkOnlineUpgrade/.test(setHtml) &&
-    !/客户端在线升级/.test(setHtml) &&
-    !/检查并在线升级/.test(setHtml),
+  !/checkOnlineUpgrade/.test(settingsView) &&
+    !/客户端在线升级/.test(settingsView) &&
+    !/检查并在线升级/.test(settingsView),
   "UPDATER-SETTINGS-BUTTON-STILL-PRESENT",
   "medium",
   "The settings UI should not expose the online upgrade button.",

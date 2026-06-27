@@ -1,5 +1,7 @@
 # 控制台单页化（L3）Implementation Plan
 
+> 当前状态说明：本文件是 console SPA 迁移实施计划，文中的旧 `index/set/printLog/softwareLog` 文件路径用于描述迁移前来源和历史步骤。当前运行时真源见 `docs/refactor/console-spa-parity.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 index/set/printLog/softwareLog 四个独立 BrowserWindow 合并为一个常驻单页"控制台"窗口（左侧栏 + Vue Router 4 视图），消除按需开窗的渲染进程冷启动；render 离屏打印窗口不动。

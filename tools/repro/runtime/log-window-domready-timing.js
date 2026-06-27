@@ -1,7 +1,7 @@
 "use strict";
 
-// 日志窗口 dom-ready 计时探针（需真实 Electron）。
-// 忠实复刻托盘点击开窗路径：show:false 隐藏窗 + loading 浮层 + 经 app:// loadURL 窗口 HTML，
+// 日志 route dom-ready 计时探针（需真实 Electron）。
+// 忠实复刻托盘点击开窗路径：show:false 隐藏窗 + loading 浮层 + 经 app:// loadURL console.html route，
 // 记录 domReady(DOMContentLoaded) / didFinishLoad / overlayRemoved。每个窗口连开两次：
 //   cold = 首次（含 V8 编译）；warm = 二次（命中 app:// standard 源的磁盘 code cache）。
 // 用于验证去 vite-plugin-singlefile（产物多 chunk、按需 EP 树摇）后窗口打开是否更快。
@@ -16,11 +16,36 @@ const { app, BrowserWindow, ipcMain } = electron;
 
 app.getAppPath = () => REPO_ROOT;
 
-// printLog 的 preload 在加载时 sendSync('hiprint:store-get','rePrint') 同步阻塞渲染，直到主进程应答。
-// 不 mock 该处理器会令 printLog 渲染进程卡死 → loadURL 报 ERR_FAILED（与产物无关，纯测试桩缺失）。
 ipcMain.on("hiprint:store-get", (event, key) => {
-  event.returnValue = key === "rePrint" ? 1 : undefined;
+  if (key === "mainTitle") event.returnValue = "Electron-hiprint";
+  else if (key === "rePrint") event.returnValue = 1;
+  else event.returnValue = undefined;
 });
+ipcMain.on("hiprint:app-version", (event) => {
+  event.returnValue = "0.0.0-repro";
+});
+ipcMain.on("hiprint:settings-snapshot", (event) => {
+  event.returnValue = {
+    port: 17521,
+    token: "",
+    nickName: "",
+    closeType: "tray",
+    pdfPath: "C:/ProgramData/hiprint/pdf",
+    defaultPrinter: "",
+    exportDirectory: { enabled: false },
+  };
+});
+ipcMain.on("request-logs", (event) => {
+  event.sender.send("print-logs", { rows: [], total: 0 });
+});
+ipcMain.handle("software-log:list-dates", () => ["2026-06-25"]);
+ipcMain.handle("software-log:read", (_event, date) => ({
+  file: String(date),
+  truncated: false,
+  lines: [{ ts: "2026-06-25 10:00:00", level: "info", msg: "ready" }],
+}));
+ipcMain.handle("software-log:clear", () => ({ ok: true }));
+ipcMain.on("software-log:open-folder", () => {});
 
 const {
   registerAssetSchemeAsPrivileged,
@@ -45,7 +70,7 @@ const killTimer = setTimeout(
 killTimer.unref && killTimer.unref();
 
 // 打开一次窗口并采集计时，窗口销毁后返回。
-function openOnce(name, preload) {
+function openOnce(target) {
   return new Promise((resolve) => {
     const start = Date.now();
     const events = {
@@ -63,7 +88,7 @@ function openOnce(name, preload) {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
-        preload,
+      preload: target.preload,
       },
     });
 
@@ -94,7 +119,7 @@ function openOnce(name, preload) {
       }
     }, 20);
 
-    win.loadURL(getAssetUrl(`${name}.html`)).catch((err) => {
+    win.loadURL(`${getAssetUrl("console.html")}${target.route}`).catch((err) => {
       failedLoads.push({ loadUrlError: String((err && err.message) || err) });
     });
 
@@ -112,11 +137,13 @@ function openOnce(name, preload) {
 const TARGETS = [
   {
     name: "softwareLog",
-    preload: path.join(REPO_ROOT, "src/preload/softwareLog.js"),
+    route: "#/software-log",
+    preload: path.join(REPO_ROOT, "src/preload/console.js"),
   },
   {
     name: "printLog",
-    preload: path.join(REPO_ROOT, "src/preload/printLog.js"),
+    route: "#/print-log",
+    preload: path.join(REPO_ROOT, "src/preload/console.js"),
   },
 ];
 
@@ -132,16 +159,17 @@ app.whenReady().then(async () => {
   try {
     const targets = SINGLE ? TARGETS.filter((t) => t.name === SINGLE) : TARGETS;
     for (const t of targets) {
-      const cold = await openOnce(t.name, t.preload);
+      const cold = await openOnce(t);
       const entry = {
         name: t.name,
+        route: t.route,
         coldDomReadyMs: cold.events.domReady,
         coldDidFinishLoadMs: cold.events.didFinishLoad,
         failedLoads: [...cold.failedLoads],
       };
       if (!SINGLE) {
         await delay(800); // 模拟托盘开关窗的真实间隔
-        const warm = await openOnce(t.name, t.preload);
+        const warm = await openOnce(t);
         entry.warmDomReadyMs = warm.events.domReady;
         entry.warmDidFinishLoadMs = warm.events.didFinishLoad;
         entry.failedLoads.push(...warm.failedLoads);

@@ -1,6 +1,6 @@
 "use strict";
 
-// 可见窗口（show:true）真实加载「软件日志 / 打印记录」页面并截图。
+// 可见窗口链路真实加载「软件日志 / 打印记录」console SPA route 并截图。
 // 与既有 loading-view-lifecycle-check.js（show:false 隐藏窗口 + 只验 isRemoved）不同：
 // 本脚本走真实可见窗口 + 真实 1MB 页面 + app:// 协议（net.fetch 修复后的实现），
 // 截图证明页面确实渲染出来（不是只剩 loading spinner），并打印各阶段耗时。
@@ -58,7 +58,6 @@ ipcMain.on("hiprint:settings-snapshot", (event) => {
     exportDirectory: { enabled: false },
   };
 });
-ipcMain.on("setContentSize", () => {});
 ipcMain.on("request-logs", (event) => {
   event.sender.send("print-logs", {
     rows: [
@@ -111,7 +110,15 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function captureWindow({ name, asset, preload, outFile }) {
+async function captureWindow({
+  name,
+  asset,
+  hash = "",
+  preload,
+  bridgeName,
+  expectedText,
+  outFile,
+}) {
   const width = 1080;
   const height = 600;
   const openedAt = Date.now();
@@ -144,13 +151,15 @@ async function captureWindow({ name, asset, preload, outFile }) {
     getAssetUrl("loading.html"),
   );
 
-  await win.loadURL(getAssetUrl(asset));
+  await win.loadURL(`${getAssetUrl(asset)}${hash}`);
   // 给 Vue 挂载 + Element Plus 渲染留时间，再截图。
   await wait(2500);
 
   const probe = await win.webContents.executeJavaScript(
     `(() => ({
       origin: location.origin,
+      hash: location.hash,
+      hasBridge: typeof window[${JSON.stringify(bridgeName)}] === 'object' && window[${JSON.stringify(bridgeName)}] !== null,
       appChildren: document.querySelector('#app')?.children.length ?? -1,
       bodyText: (document.body.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 120)
     }))()`,
@@ -161,9 +170,13 @@ async function captureWindow({ name, asset, preload, outFile }) {
 
   const step = {
     name,
+    hash,
     events,
     overlayRemoved: overlay.isRemoved(),
     probe,
+    hasExpectedText: expectedText
+      ? String(probe.bodyText || "").includes(expectedText)
+      : true,
     outFile,
     totalMs: Date.now() - openedAt,
   };
@@ -187,26 +200,47 @@ app.whenReady().then(async () => {
     result.steps.push(
       await captureWindow({
         name: "softwareLog",
-        asset: "softwareLog.html",
-        preload: path.join(REPO_ROOT, "src/preload/softwareLog.js"),
+        asset: "console.html",
+        hash: "#/software-log",
+        preload: path.join(REPO_ROOT, "src/preload/console.js"),
+        bridgeName: "hiprintSoftwareLog",
+        expectedText: "软件日志",
         outFile: path.join(OUT_DIR, "verify-softwareLog.png"),
       }),
     );
     result.steps.push(
       await captureWindow({
         name: "printLog",
-        asset: "printLog.html",
-        preload: path.join(REPO_ROOT, "src/preload/printLog.js"),
+        asset: "console.html",
+        hash: "#/print-log",
+        preload: path.join(REPO_ROOT, "src/preload/console.js"),
+        bridgeName: "hiprintPrintLog",
+        expectedText: "打印记录",
         outFile: path.join(OUT_DIR, "verify-printLog.png"),
       }),
     );
   } catch (error) {
+    result.failed = true;
     result.error = String((error && error.stack) || error);
+  }
+
+  for (const step of result.steps) {
+    if (
+      !step.overlayRemoved ||
+      !step.probe ||
+      step.probe.origin !== "app://bundle" ||
+      step.probe.hash !== step.hash ||
+      !step.probe.hasBridge ||
+      step.probe.appChildren < 1 ||
+      !step.hasExpectedText
+    ) {
+      result.failed = true;
+    }
   }
 
   clearTimeout(killTimer);
   console.log("CAPTURE_RESULT " + JSON.stringify(result));
-  app.exit(0);
+  app.exit(result.failed ? 1 : 0);
 });
 
 app.on("window-all-closed", () => {});

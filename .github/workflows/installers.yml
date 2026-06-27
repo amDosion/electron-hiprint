@@ -29,9 +29,6 @@ jobs:
           - os: windows-2025-vs2026
             script: build-w-64
             artifact: win_x64
-          - os: windows-2025-vs2026
-            script: build-w
-            artifact: win_x32
           - os: macos-15
             script: build-m-arm64
             artifact: mac_arm64

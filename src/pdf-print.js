@@ -12,12 +12,14 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const dns = require("dns");
+const { getPaperSizeInfoAll } = require("win32-pdf-printer");
 const {
   store,
   getHttpUrlTargetError,
   isBlockedIPv4,
   isBlockedIPv6,
 } = require("../tools/utils");
+const { resolvePdfPaperSizeName } = require("./print-page-size");
 const dayjs = require("dayjs");
 const { v7: uuidv7 } = require("uuid");
 
@@ -45,13 +47,17 @@ const realPrint = (pdfPath, printer, data, resolve, reject) => {
   }
 
   if (process.platform === "win32") {
-    data = Object.assign({}, data);
-    data.printer = printer;
-    console.log("print pdf:" + pdfPath + JSON.stringify(data));
+    const paperSize = resolvePdfPaperSizeName({
+      data,
+      printer,
+      getPaperSizeInfoAll,
+    });
+    const pdfOptions = Object.assign({}, data, { printer });
+    if (paperSize) pdfOptions.paperSize = paperSize;
+    console.log("print pdf:" + pdfPath + JSON.stringify(pdfOptions));
     // 参数见 node_modules/pdf-to-printer/dist/print/print.d.ts
     // pdf打印文档：https://www.sumatrapdfreader.org/docs/Command-line-arguments
     // pdf-to-printer 源码: https://github.com/artiebits/pdf-to-printer
-    let pdfOptions = Object.assign(data, { paperSize: data.paperName });
     printPdfFunction(pdfPath, pdfOptions)
       .then(() => {
         resolve();

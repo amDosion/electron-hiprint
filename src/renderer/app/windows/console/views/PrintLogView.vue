@@ -1,8 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, toRaw } from 'vue'
-import dayjs from 'dayjs'
 import { requireBridge } from '@/shared/bridge'
 import ConfirmDialog from '@/shared/ConfirmDialog.vue'
+import {
+  buildPrintLogsRequest,
+  clampPrintLogPage,
+  formatPrintLogTime,
+  getNextPrintLogSort,
+  getPrintLogIndex,
+  getPrintLogPageCount,
+  getPrintLogPageItems,
+  getPrintLogSortClass,
+  normalizePrintLogsPayload,
+  type PrintLogRow,
+  type PrintLogSearchData,
+  type PrintLogSort,
+} from './print-log-table-model'
 
 // 打印记录是一个「分页日志表」（每页 ≤200 行），刻意不引入 element-plus：原生 <table> + 手写分页 +
 // 原生 <select> + <input type="datetime-local"> + 内联 SVG 即可覆盖全部交互，避免 el-table /
@@ -17,32 +30,14 @@ const ipc = requireBridge(window.hiprintPrintLog, 'hiprintPrintLog', 'preload/co
 // rePrint 总开关（preload 启动时同步读取，全程不变）
 const rePrintAble = ipc.rePrintAble
 
-interface PrintLogRow {
-  id?: number | string
-  timestamp?: string | number
-  clientType?: string
-  printer?: string
-  templateId?: string
-  pageNum?: number | string
-  status?: string
-  errorMessage?: string
-  rePrintAble?: number
-  [key: string]: unknown
-}
-
 const logs = ref<PrintLogRow[]>([])
 const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 // sort.order 取值与原 el-table @sort-change 一致：'ascending' / 'descending' / undefined（后端契约不变）
-const sort = ref<{ prop?: string; order?: string }>({ prop: undefined, order: undefined })
+const sort = ref<PrintLogSort>({ prop: undefined, order: undefined })
 
-const searchData = reactive<{
-  startTime: string
-  endTime: string
-  clientType: string
-  status: string
-}>({
+const searchData = reactive<PrintLogSearchData>({
   startTime: '',
   endTime: '',
   clientType: '',
@@ -53,73 +48,37 @@ const clearConfirmVisible = ref(false)
 const jumpValue = ref('')
 
 function fmtTime(value: unknown): string {
-  return dayjs(value as string | number).format('YYYY/MM/DD HH:mm:ss')
+  return formatPrintLogTime(value)
 }
 
 function indexNo(idx: number): number {
-  return (currentPage.value - 1) * pageSize.value + idx + 1
+  return getPrintLogIndex(currentPage.value, pageSize.value, idx)
 }
 
 function fetchLogs(): void {
-  const condition: string[] = []
-  const params: unknown[] = []
-  // datetime-local 产出 'YYYY-MM-DDTHH:mm:ss'；统一规整为 'YYYY-MM-DD HH:mm:ss' 与后端列格式对齐。
-  const start = searchData.startTime ? dayjs(searchData.startTime) : null
-  const end = searchData.endTime ? dayjs(searchData.endTime) : null
-  if (start?.isValid() && end?.isValid()) {
-    condition.push('timestamp >= ? AND timestamp <= ?')
-    params.push(start.format('YYYY-MM-DD HH:mm:ss'))
-    params.push(end.format('YYYY-MM-DD HH:mm:ss'))
-  }
-  if (searchData.clientType) {
-    condition.push('clientType = ?')
-    params.push(searchData.clientType)
-  }
-  if (searchData.status) {
-    condition.push('status = ?')
-    params.push(searchData.status)
-  }
-  ipc.send('request-logs', {
-    condition,
-    params,
-    page: { currentPage: currentPage.value, pageSize: pageSize.value },
-    sort: { prop: sort.value.prop, order: sort.value.order },
-  })
+  ipc.send(
+    'request-logs',
+    buildPrintLogsRequest(searchData, currentPage.value, pageSize.value, sort.value),
+  )
 }
 
 // 服务端排序：点击表头在 升序→降序→无序 之间循环（与原 el-table sortable="custom" 行为一致）。
 function onSort(prop: string): void {
-  if (sort.value.prop !== prop) {
-    sort.value = { prop, order: 'ascending' }
-  } else if (sort.value.order === 'ascending') {
-    sort.value = { prop, order: 'descending' }
-  } else {
-    sort.value = { prop: undefined, order: undefined }
-  }
+  sort.value = getNextPrintLogSort(sort.value, prop)
   currentPage.value = 1
   fetchLogs()
 }
 
 function sortClass(prop: string): string {
-  // prop 守卫后，order 只可能是 onSort 设置的 ascending / descending（无第三态）。
-  if (sort.value.prop !== prop) return ''
-  return sort.value.order === 'ascending' ? 'asc' : 'desc'
+  return getPrintLogSortClass(sort.value, prop)
 }
 
-const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
+const pageCount = computed(() => getPrintLogPageCount(total.value, pageSize.value))
 
-// 分页按钮序列（窗口 5、首尾常驻、远端折叠为可点省略号），复刻 el-pagination pager-count=5 的观感。
-const pageItems = computed<(number | 'l-dots' | 'r-dots')[]>(() => {
-  const pc = pageCount.value
-  const cur = currentPage.value
-  if (pc <= 7) return Array.from({ length: pc }, (_, i) => i + 1)
-  if (cur <= 4) return [1, 2, 3, 4, 5, 'r-dots', pc]
-  if (cur >= pc - 3) return [1, 'l-dots', pc - 4, pc - 3, pc - 2, pc - 1, pc]
-  return [1, 'l-dots', cur - 1, cur, cur + 1, 'r-dots', pc]
-})
+const pageItems = computed(() => getPrintLogPageItems(pageCount.value, currentPage.value))
 
 function goPage(p: number): void {
-  const clamped = Math.min(Math.max(1, p), pageCount.value)
+  const clamped = clampPrintLogPage(p, pageCount.value)
   if (clamped === currentPage.value) return
   currentPage.value = clamped
   fetchLogs()
@@ -156,9 +115,9 @@ function handleRePrint(row: PrintLogRow): void {
 onMounted(() => {
   fetchLogs()
   ipc.onPrintLogs((_event, payload) => {
-    const data = (payload ?? {}) as { rows?: PrintLogRow[]; total?: number }
-    logs.value = Array.isArray(data.rows) ? data.rows : []
-    total.value = Number(data.total) || 0
+    const data = normalizePrintLogsPayload(payload)
+    logs.value = data.rows
+    total.value = data.total
   })
 })
 </script>

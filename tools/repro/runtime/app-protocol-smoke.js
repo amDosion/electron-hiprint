@@ -4,9 +4,9 @@
 // 复用生产模块 src/asset-protocol.js + src/asset-url.js，验证：
 //   1. app:// 注册为标准+安全来源，真实窗口能从 app:// 加载页面（did-finish-load）；
 //   2. 页面 origin 为 app://bundle（真实安全来源，非 file:// 不透明来源）；
-//   3. handler 能从 assets/ 取真实窗口 HTML（已构建的 index.html），content-type 为
+//   3. handler 能从 assets/ 取真实窗口 HTML（已构建的 console.html），content-type 为
 //      text/html（证明 MIME 标注与 Response 接线正确）；
-//   4. handler 能伺服 index.html 引用的外链 JS chunk（assets/assets/*.js），content-type 为
+//   4. handler 能伺服 console.html 引用的外链 JS chunk（assets/assets/*.js），content-type 为
 //      text/javascript（证明去 singlefile 后多 chunk 产物在 app:// standard+secure 源下
 //      能作为 ES module 正确加载执行——这是本协议设计的目标路径）；
 //   5. 路径穿越请求被 handler 拒绝（HTTP 403）。
@@ -71,14 +71,14 @@ app.whenReady().then(async () => {
     const probe = await win.webContents.executeJavaScript(`(async () => {
       const out = {};
       out.origin = location.origin;
-      // 取一个真实生产窗口（已构建的 index.html），验证 handler 伺服与 MIME 标注。
-      const r = await fetch('app://bundle/index.html');
+      // 取一个真实生产窗口（已构建的 console.html），验证 handler 伺服与 MIME 标注。
+      const r = await fetch('app://bundle/console.html');
       out.htmlOk = r.ok;
       out.htmlStatus = r.status;
       out.htmlType = r.headers.get('content-type');
       const body = await r.text();
       out.htmlLen = body.length;
-      // 去 singlefile 后，index.html 以外链 <script type="module" src="./assets/xxx.js"> 引用 chunk。
+      // 去 singlefile 后，console.html 以外链 <script type="module" src="./assets/xxx.js"> 引用 chunk。
       // 解析出首个 JS chunk 路径并经 app:// 取回，验证 .js 被带 text/javascript 正确伺服。
       const m = body.match(/src="(?:\\.\\/)?(assets\\/[^"]+\\.js)"/);
       out.chunkPath = m ? m[1] : null;

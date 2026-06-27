@@ -3,7 +3,7 @@
 /**
  * 打印日志查询守卫（纯函数，无 Electron 依赖，便于单测）。
  *
- * 背景：渲染端（printLog.html）通过 IPC 把 `condition` SQL 片段数组直接发到主进程，
+ * 背景：打印记录 route 通过 IPC 把 `condition` SQL 片段数组直接发到主进程，
  * 旧实现 `" WHERE " + condition.join(" AND ")` 把片段原样拼进 SQL，存在注入风险
  * （恶意/被篡改渲染端可发 `1=1; DROP TABLE ...`）。LIMIT/OFFSET 也由 page 直接插值。
  *

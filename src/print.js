@@ -8,11 +8,17 @@ const { printPdf, printPdfBlob } = require("./pdf-print");
 const { getFileAssetUrl } = require("./asset-url");
 const { store, getCurrentPrintStatusByName } = require("../tools/utils");
 const { getAppWindow } = require("./app-window");
+const { writePrintLog } = require("./print-log-writer");
+const { completePrintTask } = require("./runner-task");
+const { resolvePrinterReadiness } = require("./printer-readiness-resolver");
+const {
+  resolvePrintPageSize,
+  withResolvedPageSize,
+} = require("./print-page-size");
 const {
   getPrinterReadiness,
   formatPrinterStatus,
 } = require("./printer-status");
-const db = require("../tools/database");
 const dayjs = require("dayjs");
 const { v7: uuidv7 } = require("uuid");
 
@@ -60,41 +66,26 @@ function initPrintEvent() {
     } else {
       socket = SOCKET_CLIENT;
     }
-    const printers = await PRINT_WINDOW.webContents.getPrintersAsync();
-    let defaultPrinter = data.printer || store.get("defaultPrinter", "");
-    const readiness = getPrinterReadiness({
-      platform: process.platform,
-      printers,
-      printerName: defaultPrinter,
+    const { readiness, deviceName } = await resolvePrinterReadiness({
+      webContents: PRINT_WINDOW.webContents,
+      data,
+      store,
       getStatusByName: getCurrentPrintStatusByName,
     });
-    defaultPrinter = readiness.printerName || defaultPrinter;
-    let deviceName = defaultPrinter;
 
     const logPrintResult = (status, errorMessage = "") => {
-      const logData = { ...data };
-      if (Object.prototype.hasOwnProperty.call(logData, "pdf_blob")) {
-        logData.pdf_blob = "[omitted]";
-      }
-      db.run(
-        `INSERT INTO print_logs (socketId, clientType, printer, templateId, data, pageNum, status, rePrintAble, errorMessage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          socket?.id,
-          data.clientType,
-          deviceName,
-          data.templateId,
-          JSON.stringify(logData),
-          data.pageNum,
-          status,
-          data.rePrintAble ?? 1,
-          errorMessage,
-        ],
-        (err) => {
-          if (err) {
-            console.error("Failed to log print result", err);
-          }
-        },
-      );
+      writePrintLog({
+        socketId: socket?.id,
+        clientType: data.clientType,
+        printer: deviceName,
+        templateId: data.templateId,
+        data,
+        pageNum: data.pageNum,
+        status,
+        rePrintAble: data.rePrintAble,
+        errorMessage,
+        omitPdfBlob: true,
+      });
     };
 
     if (!readiness.ready) {
@@ -111,14 +102,19 @@ function initPrintEvent() {
           templateId: data.templateId,
           replyId: data.replyId,
         });
-      if (data.taskId) {
-        // 通过 taskMap 调用 task done 回调
-        PRINT_RUNNER_DONE[data.taskId]();
-        delete PRINT_RUNNER_DONE[data.taskId];
-      }
-      getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
+      completePrintTask(data, {
+        doneMap: PRINT_RUNNER_DONE,
+        runner: PRINT_RUNNER,
+        getAppWindow,
+      });
       return;
     }
+
+    const effectivePageSize = await resolvePrintPageSize(
+      PRINT_WINDOW.webContents,
+      data,
+    );
+    const printData = withResolvedPageSize(data, effectivePageSize);
 
     // pdf 打印
     let isPdf = data.type && `${data.type}`.toLowerCase() === "pdf";
@@ -137,7 +133,7 @@ function initPrintEvent() {
           displayHeaderFooter: data.displayHeaderFooter ?? false, // 显示页眉页脚
           printBackground: data.printBackground ?? true, // 打印背景色
           scale: data.scale ?? 1, // 渲染比例 默认 1
-          pageSize: data.pageSize,
+          pageSize: effectivePageSize,
           margins: data.margins ?? {
             marginType: "none",
           }, // 边距
@@ -148,7 +144,7 @@ function initPrintEvent() {
         })
         .then((pdfData) => {
           fs.writeFileSync(pdfPath, pdfData);
-          printPdf(pdfPath, deviceName, data)
+          printPdf(pdfPath, deviceName, printData)
             .then(() => {
               console.log(
                 `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
@@ -188,13 +184,11 @@ function initPrintEvent() {
               try {
                 fs.unlinkSync(pdfPath);
               } catch (_) {}
-              if (data.taskId) {
-                // 通过taskMap 调用 task done 回调
-                PRINT_RUNNER_DONE[data.taskId]();
-                // 删除 task
-                delete PRINT_RUNNER_DONE[data.taskId];
-              }
-              getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
+              completePrintTask(data, {
+                doneMap: PRINT_RUNNER_DONE,
+                runner: PRINT_RUNNER,
+                getAppWindow,
+              });
             });
         })
         .catch((err) => {
@@ -212,18 +206,18 @@ function initPrintEvent() {
               replyId: data.replyId,
             });
           logPrintResult("failed", err?.message || String(err));
-          if (data.taskId) {
-            PRINT_RUNNER_DONE[data.taskId]();
-            delete PRINT_RUNNER_DONE[data.taskId];
-          }
-          getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
+          completePrintTask(data, {
+            doneMap: PRINT_RUNNER_DONE,
+            runner: PRINT_RUNNER,
+            getAppWindow,
+          });
         });
       return;
     }
     // url_pdf 打印
     const isUrlPdf = data.type && `${data.type}`.toLowerCase() === "url_pdf";
     if (isUrlPdf) {
-      printPdf(data.pdf_path, deviceName, data)
+      printPdf(data.pdf_path, deviceName, printData)
         .then(() => {
           console.log(
             `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
@@ -261,13 +255,11 @@ function initPrintEvent() {
           logPrintResult("failed", err.message);
         })
         .finally(() => {
-          if (data.taskId) {
-            // 通过 taskMap 调用 task done 回调
-            PRINT_RUNNER_DONE[data.taskId]();
-            // 删除 task
-            delete PRINT_RUNNER_DONE[data.taskId];
-          }
-          getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
+          completePrintTask(data, {
+            doneMap: PRINT_RUNNER_DONE,
+            runner: PRINT_RUNNER,
+            getAppWindow,
+          });
         });
       return;
     }
@@ -288,18 +280,22 @@ function initPrintEvent() {
             msg: errorMsg,
             templateId: data.templateId,
             replyId: data.replyId,
-          });
+        });
         logPrintResult("failed", errorMsg);
-        if (data.taskId) {
-          PRINT_RUNNER_DONE[data.taskId]();
-          delete PRINT_RUNNER_DONE[data.taskId];
-        }
-        getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
+        completePrintTask(data, {
+          doneMap: PRINT_RUNNER_DONE,
+          runner: PRINT_RUNNER,
+          getAppWindow,
+        });
         return;
       }
       let pdfBlob = data.pdf_blob;
       delete data.pdf_blob;
-      printPdfBlob(pdfBlob, deviceName, data)
+      printPdfBlob(
+        pdfBlob,
+        deviceName,
+        withResolvedPageSize(data, effectivePageSize),
+      )
         .then(() => {
           console.log(
             `${data.replyId ? "中转服务" : "插件端"} ${socket?.id} 模板 【${
@@ -337,13 +333,11 @@ function initPrintEvent() {
           logPrintResult("failed", err.message);
         })
         .finally(() => {
-          if (data.taskId) {
-            // 通过 taskMap 调用 task done 回调
-            PRINT_RUNNER_DONE[data.taskId]();
-            // 删除 task
-            delete PRINT_RUNNER_DONE[data.taskId];
-          }
-          getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
+          completePrintTask(data, {
+            doneMap: PRINT_RUNNER_DONE,
+            runner: PRINT_RUNNER,
+            getAppWindow,
+          });
         });
       return;
     }
@@ -367,7 +361,7 @@ function initPrintEvent() {
         dpi: data.dpi ?? 300, // 打印机DPI
         header: data.header, // 打印头
         footer: data.footer, // 打印尾
-        pageSize: data.pageSize, // 打印纸张
+        pageSize: effectivePageSize, // 打印纸张
       },
       (success, failureReason) => {
         if (success) {
@@ -403,13 +397,11 @@ function initPrintEvent() {
             });
           }
         }
-        // 通过 taskMap 调用 task done 回调
-        if (data.taskId) {
-          PRINT_RUNNER_DONE[data.taskId]();
-          // 删除 task
-          delete PRINT_RUNNER_DONE[data.taskId];
-        }
-        getAppWindow()?.webContents.send("printTask", PRINT_RUNNER.isBusy());
+        completePrintTask(data, {
+          doneMap: PRINT_RUNNER_DONE,
+          runner: PRINT_RUNNER,
+          getAppWindow,
+        });
       },
     );
   });

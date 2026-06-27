@@ -3,7 +3,6 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 const childProcess = require("child_process");
-const net = require("net");
 const { app, Notification, dialog, clipboard, shell } = require("electron");
 const address = require("address");
 const { getAppWindow } = require("../src/app-window");
@@ -11,6 +10,19 @@ const ipp = require("ipp");
 const { machineIdSync } = require("node-machine-id");
 const Store = require("electron-store");
 const { v7: uuidv7 } = require("uuid");
+const {
+  normalizeHost,
+  isBlockedIPv4,
+  isBlockedIPv6,
+  getIppTargetError: getNetworkIppTargetError,
+  getHttpUrlTargetError,
+} = require("./network-target-guard");
+const {
+  normalizeExportDirectoryConfig,
+  getExportCapability: getFileExportCapability,
+  handleFileExportTask: handleConfiguredFileExportTask,
+} = require("./file-export");
+const clientStatus = require("./client-status");
 
 /**
  * win32-pdf-printer 的 paper-size-info.exe 会被 electron-builder 解压到 app.asar.unpacked。
@@ -307,130 +319,12 @@ function getMachineId() {
   }
 }
 
-const DEFAULT_EXPORT_ALLOWED_EXTENSIONS = [
-  ".pdf",
-  ".doc",
-  ".docx",
-  ".rtf",
-  ".odt",
-  ".xls",
-  ".xlsx",
-  ".xlsm",
-  ".csv",
-  ".tsv",
-  ".ppt",
-  ".pptx",
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".svg",
-  ".tif",
-  ".tiff",
-  ".txt",
-  ".md",
-  ".json",
-  ".xml",
-  ".zip",
-];
-const BLOCKED_EXPORT_EXTENSIONS = new Set([
-  ".apk",
-  ".app",
-  ".com",
-  ".cpl",
-  ".dll",
-  ".exe",
-  ".bat",
-  ".cmd",
-  ".msi",
-  ".ps1",
-  ".vbs",
-  ".vb",
-  ".vbe",
-  ".js",
-  ".jse",
-  ".jar",
-  ".lnk",
-  ".reg",
-  ".scr",
-  ".sh",
-  ".wsf",
-]);
-const RESERVED_WINDOWS_NAMES = new Set([
-  "con",
-  "prn",
-  "aux",
-  "nul",
-  "com1",
-  "com2",
-  "com3",
-  "com4",
-  "com5",
-  "com6",
-  "com7",
-  "com8",
-  "com9",
-  "lpt1",
-  "lpt2",
-  "lpt3",
-  "lpt4",
-  "lpt5",
-  "lpt6",
-  "lpt7",
-  "lpt8",
-  "lpt9",
-]);
-
-function normalizeExportDirectoryConfig() {
-  const raw = store.get("exportDirectory") || {};
-  const allowedExtensions = Array.isArray(raw.allowedExtensions)
-    ? raw.allowedExtensions
-        .filter((item) => typeof item === "string")
-        .map((item) => normalizeExtension(item))
-        .filter(Boolean)
-    : DEFAULT_EXPORT_ALLOWED_EXTENSIONS;
-  const maxBytes = Number(raw.maxBytes);
-  const conflictPolicy = ["fail", "rename", "overwrite"].includes(
-    raw.conflictPolicy,
-  )
-    ? raw.conflictPolicy
-    : "rename";
-  return {
-    enabled: raw.enabled === true,
-    path: typeof raw.path === "string" ? raw.path.trim() : "",
-    displayName:
-      typeof raw.displayName === "string" ? raw.displayName.trim() : "",
-    maxBytes: Number.isFinite(maxBytes) && maxBytes > 0 ? maxBytes : 52428800,
-    allowedExtensions:
-      allowedExtensions.length > 0
-        ? Array.from(new Set(allowedExtensions))
-        : DEFAULT_EXPORT_ALLOWED_EXTENSIONS,
-    conflictPolicy,
-  };
+function getExportDirectoryConfig() {
+  return normalizeExportDirectoryConfig(store.get("exportDirectory") || {});
 }
 
 function getExportCapability() {
-  const config = normalizeExportDirectoryConfig();
-  const enabled = config.enabled && !!config.path;
-  return {
-    enabled,
-    displayName:
-      config.displayName ||
-      (config.path ? path.basename(config.path) : "Shared export"),
-    maxBytes: config.maxBytes,
-    allowedExtensions: config.allowedExtensions,
-    conflictPolicy: config.conflictPolicy,
-  };
-}
-
-function normalizeHost(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/^\[/, "")
-    .replace(/\]$/, "");
+  return getFileExportCapability(getExportDirectoryConfig());
 }
 
 function getAllowedIppHosts() {
@@ -440,270 +334,12 @@ function getAllowedIppHosts() {
     : [];
 }
 
-function isBlockedIPv4(hostname) {
-  const parts = hostname.split(".").map((part) => Number(part));
-  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
-    return false;
-  }
-  const [a, b] = parts;
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 100 && b >= 64 && b <= 127) ||
-    a >= 224
-  );
-}
-
-function isBlockedIPv6(hostname) {
-  const normalized = normalizeHost(hostname);
-  return (
-    normalized === "::" ||
-    normalized === "::1" ||
-    normalized.startsWith("fc") ||
-    normalized.startsWith("fd") ||
-    normalized.startsWith("fe80:")
-  );
-}
-
 function getIppTargetError(rawUrl) {
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return createIppTargetError("IPP URL 格式无效");
-  }
-
-  if (!["http:", "https:", "ipp:", "ipps:"].includes(parsed.protocol)) {
-    return createIppTargetError("IPP URL 协议不被允许");
-  }
-
-  const hostname = normalizeHost(parsed.hostname);
-  const allowedHosts = getAllowedIppHosts();
-  if (allowedHosts.includes("*") || allowedHosts.includes(hostname)) {
-    return null;
-  }
-
-  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-    return createIppTargetError("IPP URL 不能指向本机地址");
-  }
-
-  const ipVersion = net.isIP(hostname);
-  if (ipVersion === 4 && isBlockedIPv4(hostname)) {
-    return createIppTargetError("IPP URL 不能指向内网或保留 IPv4 地址");
-  }
-  if (ipVersion === 6 && isBlockedIPv6(hostname)) {
-    return createIppTargetError("IPP URL 不能指向内网或保留 IPv6 地址");
-  }
-
-  return null;
-}
-
-function createIppTargetError(message) {
-  const error = new Error(message);
-  error.name = "InvalidIppTarget";
-  return error;
-}
-
-/**
- * @description: 校验对端可控的 http(s) 下载地址，拦截 SSRF（如 url_pdf 打印类型）。
- *   仅放行 http/https，拒绝 localhost 与内网/保留 IPv4/IPv6 字面量地址。
- *   注意：此处只校验 URL 中的字面量主机；域名解析到内网的 DNS 重绑定由调用方
- *   在连接前对解析后的 IP 再做一次 isBlockedIPv4/isBlockedIPv6 校验。
- * @param {string} rawUrl 待校验的 URL
- * @return {Error|null} 不合法时返回 Error，合法返回 null
- */
-function getHttpUrlTargetError(rawUrl) {
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return new Error("下载地址格式无效");
-  }
-  if (!["http:", "https:"].includes(parsed.protocol)) {
-    return new Error("仅允许 http/https 协议");
-  }
-  const hostname = normalizeHost(parsed.hostname);
-  if (
-    !hostname ||
-    hostname === "localhost" ||
-    hostname.endsWith(".localhost")
-  ) {
-    return new Error("下载地址不能指向本机地址");
-  }
-  const ipVersion = net.isIP(hostname);
-  if (ipVersion === 4 && isBlockedIPv4(hostname)) {
-    return new Error("下载地址不能指向内网或保留 IPv4 地址");
-  }
-  if (ipVersion === 6 && isBlockedIPv6(hostname)) {
-    return new Error("下载地址不能指向内网或保留 IPv6 地址");
-  }
-  return null;
-}
-
-function normalizeExtension(value) {
-  const text = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (!text) return "";
-  return text.startsWith(".") ? text : `.${text}`;
-}
-
-function sanitizeExportFileName(fileName) {
-  const original = String(fileName || "").trim();
-  if (!original) {
-    throw createExportError("FILE_NAME_REQUIRED", "文件名不能为空");
-  }
-  if (
-    original.includes("/") ||
-    original.includes("\\") ||
-    original.includes(":") ||
-    original.includes("\0")
-  ) {
-    throw createExportError("FILE_NAME_INVALID", "文件名不能包含路径片段");
-  }
-  const baseName = path
-    .basename(original)
-    .replace(/[\x00-\x1f<>:"/\\|?*]/g, "_");
-  const parsed = path.parse(baseName);
-  if (!parsed.name || RESERVED_WINDOWS_NAMES.has(parsed.name.toLowerCase())) {
-    throw createExportError("FILE_NAME_RESERVED", "文件名为系统保留名称");
-  }
-  return baseName;
-}
-
-function decodeExportPayload(task) {
-  if (!task || task.mode !== "binary") {
-    throw createExportError("UNSUPPORTED_MODE", "仅支持 binary 导出模式");
-  }
-  if (typeof task.payload !== "string" || !task.payload) {
-    throw createExportError("PAYLOAD_REQUIRED", "导出内容不能为空");
-  }
-  let buffer;
-  try {
-    buffer = Buffer.from(task.payload, "base64");
-  } catch {
-    throw createExportError("PAYLOAD_INVALID", "导出内容不是合法 base64");
-  }
-  if (task.size != null && Number(task.size) !== buffer.length) {
-    throw createExportError("SIZE_MISMATCH", "导出内容大小校验失败");
-  }
-  return buffer;
-}
-
-function ensureExportPathInsideRoot(rootPath, fileName) {
-  const root = fs.realpathSync(rootPath);
-  const target = path.resolve(root, fileName);
-  const relative = path.relative(root, target);
-  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw createExportError("PATH_OUTSIDE_ROOT", "导出路径超出授权目录");
-  }
-  return target;
-}
-
-function resolveExportConflict(target, policy) {
-  if (!fs.existsSync(target)) return target;
-  if (policy === "fail") {
-    throw createExportError("FILE_EXISTS", "目标文件已存在");
-  }
-  if (policy === "overwrite") return target;
-
-  const parsed = path.parse(target);
-  for (let index = 1; index <= 999; index += 1) {
-    const candidate = path.join(
-      parsed.dir,
-      `${parsed.name} (${index})${parsed.ext}`,
-    );
-    if (!fs.existsSync(candidate)) return candidate;
-  }
-  throw createExportError("FILE_RENAME_EXHAUSTED", "无法生成不重复文件名");
-}
-
-function createExportError(code, message) {
-  const error = new Error(message);
-  error.code = code;
-  return error;
+  return getNetworkIppTargetError(rawUrl, getAllowedIppHosts());
 }
 
 function handleFileExportTask(client, task) {
-  const replyId = task && task.replyId;
-  const taskId = (task && task.taskId) || uuidv7();
-  let tempPath = "";
-  const emitError = (err) => {
-    client.emit("file.export.error", {
-      taskId,
-      replyId,
-      code: err.code || "FILE_EXPORT_FAILED",
-      message: err.message || "文件导出失败",
-    });
-  };
-
-  try {
-    const config = normalizeExportDirectoryConfig();
-    if (!config.enabled || !config.path) {
-      throw createExportError(
-        "FILE_EXPORT_DISABLED",
-        "客户端未启用共享导出目录",
-      );
-    }
-    fs.accessSync(config.path, fs.constants.W_OK);
-    const fileName = sanitizeExportFileName(task && task.fileName);
-    const extension = normalizeExtension(path.extname(fileName));
-    if (!extension || BLOCKED_EXPORT_EXTENSIONS.has(extension)) {
-      throw createExportError("FILE_EXTENSION_BLOCKED", "文件扩展名被禁止");
-    }
-    if (!config.allowedExtensions.includes(extension)) {
-      throw createExportError(
-        "FILE_EXTENSION_NOT_ALLOWED",
-        "文件扩展名未被允许",
-      );
-    }
-
-    const buffer = decodeExportPayload(task);
-    if (buffer.length > config.maxBytes) {
-      throw createExportError("FILE_TOO_LARGE", "导出文件超过客户端大小限制");
-    }
-    if (task.sha256) {
-      const digest = crypto
-        .createHash("sha256")
-        .update(buffer)
-        .digest("hex");
-      if (digest.toLowerCase() !== String(task.sha256).toLowerCase()) {
-        throw createExportError("CHECKSUM_MISMATCH", "导出文件校验失败");
-      }
-    }
-
-    const target = resolveExportConflict(
-      ensureExportPathInsideRoot(config.path, fileName),
-      task.conflictPolicy || config.conflictPolicy,
-    );
-    tempPath = `${target}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tempPath, buffer, { flag: "wx" });
-    fs.renameSync(tempPath, target);
-    tempPath = "";
-    client.emit("file.export.success", {
-      taskId,
-      replyId,
-      fileName: path.basename(target),
-      displayPath: `${getExportCapability().displayName}/${path.basename(
-        target,
-      )}`,
-      bytes: buffer.length,
-      sha256: task.sha256,
-    });
-  } catch (err) {
-    if (tempPath) {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch {
-        // Best-effort cleanup; the export error is reported below.
-      }
-    }
-    emitError(err);
-  }
+  handleConfiguredFileExportTask(client, task, getExportDirectoryConfig());
 }
 
 /**
@@ -712,36 +348,13 @@ function handleFileExportTask(client, task) {
  * @return {void}
  */
 function emitClientInfo(socket) {
-  _address
-    .mac()
-    .then((mac) => {
-      const defaultPrinter = store.get("defaultPrinter", "");
-      const bindHost = store.get("bindHost") || "127.0.0.1";
-      const clientHost =
-        bindHost === "0.0.0.0" || bindHost === "::" ? _address.ip() : bindHost;
-      socket.emit("clientInfo", {
-        hostname: os.hostname(), // 主机名
-        version: app.getVersion(), // 版本号
-        platform: process.platform, // 平台
-        arch: process.arch, // 系统架构
-        mac: mac, // mac 地址
-        ip: _address.ip(), // ip 地址
-        ipv6: _address.ipv6(), // ipv6 地址
-        clientUrl: `http://${clientHost}:${store.get("port") || 17521}`, // 客户端地址
-        machineId: getMachineId(), // 客户端唯一id
-        nickName: store.get("nickName"), // 客户端昵称
-        defaultPrinter, // 客户端高级设置里的默认打印机
-        capabilities: {
-          print: { enabled: true },
-          fileExport: getExportCapability(),
-        },
-      });
-    })
-    .catch((err) => {
-      // _address.mac() 不会 reject，但 then 体内（如 socket.emit）若同步抛出，
-      // 无 catch 会成为不可见的 unhandledRejection；记录以便排查
-      console.error("emitClientInfo failed", err);
-    });
+  clientStatus.emitClientInfo(socket, {
+    address: _address,
+    store,
+    app,
+    getMachineId,
+    getExportCapability,
+  });
 }
 
 async function getConfiguredPrinterList() {
@@ -862,6 +475,208 @@ function queryPrintStatus(templateIds, onSuccess, onError) {
   );
 }
 
+function withReplyId(payload, replyId, includeReplyId) {
+  return includeReplyId ? Object.assign({}, payload, { replyId }) : payload;
+}
+
+function normalizeIppMessage(message) {
+  const msg = Object.assign(
+    {
+      "operation-attributes-tag": {
+        "requesting-user-name": "hiPrint",
+      },
+    },
+    message,
+  );
+  // data 必须是 Buffer 类型
+  if (msg.data && !Buffer.isBuffer(msg.data)) {
+    if ("string" === typeof msg.data) {
+      msg.data = Buffer.from(msg.data, msg.encoding || "utf8");
+    } else {
+      msg.data = Buffer.from(msg.data);
+    }
+  }
+  return msg;
+}
+
+function bindIppHandlers(socket, { label, includeReplyId }) {
+  socket.on("ippPrint", (options) => {
+    console.log(`${label} ${socket.id}: ippPrint`);
+    const replyId = options && options.replyId;
+    try {
+      const { url, opt, action, message } = options;
+      const targetError = getIppTargetError(url);
+      if (targetError) {
+        socket.emit(
+          "ippPrinterCallback",
+          withReplyId(
+            { type: targetError.name, msg: targetError.message },
+            replyId,
+            includeReplyId,
+          ),
+        );
+        return;
+      }
+      let printer = ipp.Printer(url, opt);
+      socket.emit(
+        "ippPrinterConnected",
+        includeReplyId ? { printer, replyId } : printer,
+      );
+      let msg = normalizeIppMessage(message);
+      /**
+       * action: Get-Printer-Attributes 获取打印机支持参数
+       * action: Print-Job 新建打印任务
+       * action: Cancel-Job 取消打印任务
+       */
+      printer.execute(action, msg, (err, res) => {
+        socket.emit(
+          "ippPrinterCallback",
+          err
+            ? withReplyId(
+                { type: err.name, msg: err.message },
+                replyId,
+                includeReplyId,
+              )
+            : includeReplyId
+            ? { replyId }
+            : null,
+          res,
+        );
+      });
+    } catch (error) {
+      console.log(`${label} ${socket.id}: ippPrint error: ${error.message}`);
+      socket.emit(
+        "ippPrinterCallback",
+        withReplyId(
+          { type: error.name, msg: error.message },
+          replyId,
+          includeReplyId,
+        ),
+      );
+    }
+  });
+
+  socket.on("ippRequest", (options) => {
+    console.log(`${label} ${socket.id}: ippRequest`);
+    const replyId = options && options.replyId;
+    try {
+      const { url, data } = options;
+      const targetError = getIppTargetError(url);
+      if (targetError) {
+        socket.emit(
+          "ippRequestCallback",
+          withReplyId(
+            { type: targetError.name, msg: targetError.message },
+            replyId,
+            includeReplyId,
+          ),
+        );
+        return;
+      }
+      let _data = ipp.serialize(data);
+      ipp.request(url, _data, (err, res) => {
+        socket.emit(
+          "ippRequestCallback",
+          err
+            ? withReplyId(
+                { type: err.name, msg: err.message },
+                replyId,
+                includeReplyId,
+              )
+            : includeReplyId
+            ? { replyId }
+            : null,
+          res,
+        );
+      });
+    } catch (error) {
+      console.log(`${label} ${socket.id}: ippRequest error: ${error.message}`);
+      socket.emit(
+        "ippRequestCallback",
+        withReplyId(
+          { type: error.name, msg: error.message },
+          replyId,
+          includeReplyId,
+        ),
+      );
+    }
+  });
+}
+
+function enqueuePrintTask(data, socketId, clientType) {
+  PRINT_RUNNER.add((done) => {
+    data.socketId = socketId;
+    data.taskId = uuidv7();
+    data.clientType = clientType;
+    PRINT_WINDOW.webContents.send("print-new", data);
+    getAppWindow()?.webContents.send("printTask", true);
+    PRINT_RUNNER_DONE[data.taskId] = done;
+  });
+}
+
+function bindPrintTaskHandler(socket, clientType) {
+  socket.on("news", (data) => {
+    if (data) enqueuePrintTask(data, socket.id, clientType);
+  });
+}
+
+function enqueueRenderTask(data, socketId, clientType, channel) {
+  RENDER_RUNNER.add((done) => {
+    data.socketId = socketId;
+    data.taskId = uuidv7();
+    data.clientType = clientType;
+    RENDER_WINDOW.webContents.send(channel, data);
+    RENDER_RUNNER_DONE[data.taskId] = done;
+  });
+}
+
+function bindRenderTaskHandlers(socket, clientType) {
+  socket.on("render-print", (data) => {
+    if (data) enqueueRenderTask(data, socket.id, clientType, "print");
+  });
+
+  socket.on("render-jpeg", (data) => {
+    if (data) enqueueRenderTask(data, socket.id, clientType, "png");
+  });
+
+  socket.on("render-pdf", (data) => {
+    if (data) enqueueRenderTask(data, socket.id, clientType, "pdf");
+  });
+}
+
+function bindFileExportHandler(socket, label) {
+  socket.on("file.export", (data) => {
+    console.log(`${label} ${socket.id}: file.export`);
+    handleFileExportTask(socket, data);
+  });
+}
+
+function bindPrintStatusHandler(socket, label) {
+  socket.on("getPrintStatus", (data) => {
+    console.log(`${label} ${socket.id}: getPrintStatus`);
+    queryPrintStatus(
+      data && Array.isArray(data.templateIds) ? data.templateIds : [],
+      (rows) => socket.emit("printStatus", rows),
+      (err) => {
+        console.error(`${label} ${socket.id}: getPrintStatus error: ${err.message}`);
+        socket.emit("printStatusError", { msg: err.message });
+      },
+    );
+  });
+}
+
+function bindClientInfoHandlers(socket, label) {
+  socket.on("getClientInfo", () => {
+    console.log(`${label} ${socket.id}: getClientInfo`);
+    emitClientInfo(socket);
+  });
+
+  socket.on("refreshPrinterList", async () => {
+    console.log(`${label} ${socket.id}: refreshPrinterList`);
+    socket.emit("printerList", await getConfiguredPrinterList());
+  });
+}
+
 /**
  * @description: 作为本地服务端时绑定的 socket 事件
  * @param {*} server
@@ -918,13 +733,7 @@ function initServeEvent(server) {
     // 向 client 发送客户端信息
     emitClientInfo(socket);
 
-    /**
-     * @description: client 请求客户端信息
-     */
-    socket.on("getClientInfo", () => {
-      console.log(`插件端 ${socket.id}: getClientInfo`);
-      emitClientInfo(socket);
-    });
+    bindClientInfoHandlers(socket, "插件端");
 
     /**
      * @description: client请求 address ，获取本机 IP、IPV6、MAC 地址
@@ -957,14 +766,6 @@ function initServeEvent(server) {
     });
 
     /**
-     * @description: client 请求刷新打印机列表
-     */
-    socket.on("refreshPrinterList", async () => {
-      console.log(`插件端 ${socket.id}: refreshPrinterList`);
-      socket.emit("printerList", await getConfiguredPrinterList());
-    });
-
-    /**
      * @description: client 获取打印机纸张信息
      */
     socket.on("getPaperSizeInfo", (printer) => {
@@ -985,107 +786,12 @@ function initServeEvent(server) {
       }
     });
 
-    /**
-     * @description: client 调用 ipp 打印 详见：https://www.npmjs.com/package/ipp
-     */
-    socket.on("ippPrint", (options) => {
-      console.log(`插件端 ${socket.id}: ippPrint`);
-      try {
-        const { url, opt, action, message } = options;
-        const targetError = getIppTargetError(url);
-        if (targetError) {
-          socket.emit("ippPrinterCallback", {
-            type: targetError.name,
-            msg: targetError.message,
-          });
-          return;
-        }
-        let printer = ipp.Printer(url, opt);
-        socket.emit("ippPrinterConnected", printer);
-        let msg = Object.assign(
-          {
-            "operation-attributes-tag": {
-              "requesting-user-name": "hiPrint",
-            },
-          },
-          message,
-        );
-        // data 必须是 Buffer 类型
-        if (msg.data && !Buffer.isBuffer(msg.data)) {
-          if ("string" === typeof msg.data) {
-            msg.data = Buffer.from(msg.data, msg.encoding || "utf8");
-          } else {
-            msg.data = Buffer.from(msg.data);
-          }
-        }
-        /**
-         * action: Get-Printer-Attributes 获取打印机支持参数
-         * action: Print-Job 新建打印任务
-         * action: Cancel-Job 取消打印任务
-         */
-        printer.execute(action, msg, (err, res) => {
-          socket.emit(
-            "ippPrinterCallback",
-            err ? { type: err.name, msg: err.message } : null,
-            res,
-          );
-        });
-      } catch (error) {
-        console.log(`插件端 ${socket.id}: ippPrint error: ${error.message}`);
-        socket.emit("ippPrinterCallback", {
-          type: error.name,
-          msg: error.message,
-        });
-      }
-    });
-
-    /**
-     * @description: client ipp request 详见：https://www.npmjs.com/package/ipp
-     */
-    socket.on("ippRequest", (options) => {
-      console.log(`插件端 ${socket.id}: ippRequest`);
-      try {
-        const { url, data } = options;
-        const targetError = getIppTargetError(url);
-        if (targetError) {
-          socket.emit("ippRequestCallback", {
-            type: targetError.name,
-            msg: targetError.message,
-          });
-          return;
-        }
-        let _data = ipp.serialize(data);
-        ipp.request(url, _data, (err, res) => {
-          socket.emit(
-            "ippRequestCallback",
-            err ? { type: err.name, msg: err.message } : null,
-            res,
-          );
-        });
-      } catch (error) {
-        console.log(`插件端 ${socket.id}: ippRequest error: ${error.message}`);
-        socket.emit("ippRequestCallback", {
-          type: error.name,
-          msg: error.message,
-        });
-      }
-    });
+    bindIppHandlers(socket, { label: "插件端", includeReplyId: false });
 
     /**
      * @description: client 常规打印任务
      */
-    socket.on("news", (data) => {
-      if (data) {
-        PRINT_RUNNER.add((done) => {
-          data.socketId = socket.id;
-          data.taskId = uuidv7();
-          data.clientType = "local";
-          PRINT_WINDOW.webContents.send("print-new", data);
-          getAppWindow()?.webContents.send("printTask", true);
-          PRINT_RUNNER_DONE[data.taskId] = done;
-        });
-      }
-    });
+    bindPrintTaskHandler(socket, "local");
 
     /**
      * @description: client 分批打印任务
@@ -1123,81 +829,25 @@ function initServeEvent(server) {
           // 合并全部打印片段信息
           data.html = currentInfo.fragments.join("");
           // 添加打印任务
-          PRINT_RUNNER.add((done) => {
-            data.socketId = socket.id;
-            data.taskId = uuidv7();
-            data.clientType = "local";
-            PRINT_WINDOW.webContents.send("print-new", data);
-            getAppWindow()?.webContents.send("printTask", true);
-            PRINT_RUNNER_DONE[data.taskId] = done;
-          });
+          enqueuePrintTask(data, socket.id, "local");
         }
         // 开始检查任务
         watchTaskInstance.startWatch();
       }
     });
 
-    socket.on("render-print", (data) => {
-      if (data) {
-        RENDER_RUNNER.add((done) => {
-          data.socketId = socket.id;
-          data.taskId = uuidv7();
-          data.clientType = "local";
-          RENDER_WINDOW.webContents.send("print", data);
-          RENDER_RUNNER_DONE[data.taskId] = done;
-        });
-      }
-    });
-
-    socket.on("render-jpeg", (data) => {
-      if (data) {
-        RENDER_RUNNER.add((done) => {
-          data.socketId = socket.id;
-          data.taskId = uuidv7();
-          data.clientType = "local";
-          RENDER_WINDOW.webContents.send("png", data);
-          RENDER_RUNNER_DONE[data.taskId] = done;
-        });
-      }
-    });
-
-    socket.on("render-pdf", (data) => {
-      if (data) {
-        RENDER_RUNNER.add((done) => {
-          data.socketId = socket.id;
-          data.taskId = uuidv7();
-          data.clientType = "local";
-          RENDER_WINDOW.webContents.send("pdf", data);
-          RENDER_RUNNER_DONE[data.taskId] = done;
-        });
-      }
-    });
+    bindRenderTaskHandlers(socket, "local");
 
     // 本地服务端文件导出：镜像中转路径(initClientEvent)的 file.export 监听，
     // 使直连本地 Socket.IO 服务的插件端也能触发文件导出（此前仅中转路径已接线）
-    socket.on("file.export", (data) => {
-      console.log(`插件端 ${socket.id}: file.export`);
-      handleFileExportTask(socket, data);
-    });
+    bindFileExportHandler(socket, "插件端");
 
     /**
      * @description: client 查询打印状态
      * @param {Object} data
      * @param {Array<String>} [data.templateIds] 模板id列表，为空时返回最近 20 条记录
      */
-    socket.on("getPrintStatus", (data) => {
-      console.log(`插件端 ${socket.id}: getPrintStatus`);
-      queryPrintStatus(
-        data && Array.isArray(data.templateIds) ? data.templateIds : [],
-        (rows) => socket.emit("printStatus", rows),
-        (err) => {
-          console.error(
-            `插件端 ${socket.id}: getPrintStatus error: ${err.message}`,
-          );
-          socket.emit("printStatusError", { msg: err.message });
-        },
-      );
-    });
+    bindPrintStatusHandler(socket, "插件端");
 
     /**
      * @description: client 断开连接
@@ -1213,45 +863,28 @@ function initServeEvent(server) {
 let transitConnectionError = "";
 
 function getPrintBusy() {
-  return !!(
-    global.PRINT_RUNNER &&
-    typeof global.PRINT_RUNNER.isBusy === "function" &&
-    global.PRINT_RUNNER.isBusy()
-  );
+  return clientStatus.getPrintBusy(global.PRINT_RUNNER);
 }
 
 function getConnectionStatus() {
-  const clientsCount =
-    global.SOCKET_SERVER &&
-    global.SOCKET_SERVER.engine &&
-    Number(global.SOCKET_SERVER.engine.clientsCount);
-  const transitConnected = !!(
-    global.SOCKET_CLIENT && global.SOCKET_CLIENT.connected
-  );
-
-  return {
-    localClientCount: Number.isFinite(clientsCount) ? clientsCount : 0,
-    transitConnected,
-    transitErrorMessage: transitConnected ? "" : transitConnectionError,
-    printing: getPrintBusy(),
-  };
+  return clientStatus.getConnectionStatus({
+    socketServer: global.SOCKET_SERVER,
+    socketClient: global.SOCKET_CLIENT,
+    transitConnectionError,
+    printRunner: global.PRINT_RUNNER,
+  });
 }
 
 function sendMainWindow(channel, payload) {
-  const win = getAppWindow();
-  const webContents = win && !win.isDestroyed() ? win.webContents : null;
-  if (!webContents || webContents.isDestroyed()) return false;
-  webContents.send(channel, payload);
-  return true;
+  return clientStatus.sendMainWindow({ getAppWindow, channel, payload });
 }
 
 function emitConnectionStatus(webContents) {
-  const win = getAppWindow();
-  const target =
-    webContents || (win && !win.isDestroyed() ? win.webContents : null);
-  if (!target || target.isDestroyed()) return false;
-  target.send("connectionStatus", getConnectionStatus());
-  return true;
+  return clientStatus.emitConnectionStatus({
+    getAppWindow,
+    webContents,
+    status: getConnectionStatus(),
+  });
 }
 
 /**
@@ -1290,187 +923,22 @@ function initClientEvent() {
     emitClientInfo(client);
   });
 
-  /**
-   * @description: 中转服务 请求客户端信息
-   */
-  client.on("getClientInfo", () => {
-    console.log(`中转服务 ${client.id}: getClientInfo`);
-    emitClientInfo(client);
-  });
-
-  /**
-   * @description: 中转服务 请求刷新打印机列表
-   */
-  client.on("refreshPrinterList", async () => {
-    console.log(`中转服务 ${client.id}: refreshPrinterList`);
-    client.emit("printerList", await getConfiguredPrinterList());
-  });
-
-  /**
-   * @description: 中转服务 调用 ipp 打印 详见：https://www.npmjs.com/package/ipp
-   */
-  client.on("ippPrint", (options) => {
-    console.log(`中转服务 ${client.id}: ippPrint`);
-    try {
-      const { url, opt, action, message, replyId } = options;
-      const targetError = getIppTargetError(url);
-      if (targetError) {
-        client.emit("ippPrinterCallback", {
-          type: targetError.name,
-          msg: targetError.message,
-          replyId,
-        });
-        return;
-      }
-      let printer = ipp.Printer(url, opt);
-      client.emit("ippPrinterConnected", { printer, replyId });
-      let msg = Object.assign(
-        {
-          "operation-attributes-tag": {
-            "requesting-user-name": "hiPrint",
-          },
-        },
-        message,
-      );
-      // data 必须是 Buffer 类型
-      if (msg.data && !Buffer.isBuffer(msg.data)) {
-        if ("string" === typeof msg.data) {
-          msg.data = Buffer.from(msg.data, msg.encoding || "utf8");
-        } else {
-          msg.data = Buffer.from(msg.data);
-        }
-      }
-      /**
-       * action: Get-Printer-Attributes 获取打印机支持参数
-       * action: Print-Job 新建打印任务
-       * action: Cancel-Job 取消打印任务
-       */
-      printer.execute(action, msg, (err, res) => {
-        client.emit(
-          "ippPrinterCallback",
-          err ? { type: err.name, msg: err.message, replyId } : { replyId },
-          res,
-        );
-      });
-    } catch (error) {
-      console.log(`中转服务 ${client.id}: ippPrint error: ${error.message}`);
-      client.emit("ippPrinterCallback", {
-        type: error.name,
-        msg: error.message,
-        replyId,
-      });
-    }
-  });
-
-  /**
-   * @description: 中转服务 ipp request 详见：https://www.npmjs.com/package/ipp
-   */
-  client.on("ippRequest", (options) => {
-    console.log(`中转服务 ${client.id}: ippRequest`);
-    try {
-      const { url, data, replyId } = options;
-      const targetError = getIppTargetError(url);
-      if (targetError) {
-        client.emit("ippRequestCallback", {
-          type: targetError.name,
-          msg: targetError.message,
-          replyId,
-        });
-        return;
-      }
-      let _data = ipp.serialize(data);
-      ipp.request(url, _data, (err, res) => {
-        client.emit(
-          "ippRequestCallback",
-          err ? { type: err.name, msg: err.message, replyId } : { replyId },
-          res,
-        );
-      });
-    } catch (error) {
-      console.log(`中转服务 ${client.id}: ippRequest error: ${error.message}`);
-      client.emit("ippRequestCallback", {
-        type: error.name,
-        msg: error.message,
-        replyId,
-      });
-    }
-  });
+  bindClientInfoHandlers(client, "中转服务");
+  bindIppHandlers(client, { label: "中转服务", includeReplyId: true });
 
   /**
    * @description: 中转服务 常规打印任务
    */
-  client.on("news", (data) => {
-    if (data) {
-      PRINT_RUNNER.add((done) => {
-        data.socketId = client.id;
-        data.taskId = uuidv7();
-        data.clientType = "transit";
-        PRINT_WINDOW.webContents.send("print-new", data);
-        getAppWindow()?.webContents.send("printTask", true);
-        PRINT_RUNNER_DONE[data.taskId] = done;
-      });
-    }
-  });
-
-  client.on("render-print", (data) => {
-    if (data) {
-      RENDER_RUNNER.add((done) => {
-        data.socketId = client.id;
-        data.taskId = uuidv7();
-        data.clientType = "transit";
-        RENDER_WINDOW.webContents.send("print", data);
-        RENDER_RUNNER_DONE[data.taskId] = done;
-      });
-    }
-  });
-
-  client.on("render-jpeg", (data) => {
-    if (data) {
-      RENDER_RUNNER.add((done) => {
-        data.socketId = client.id;
-        data.taskId = uuidv7();
-        data.clientType = "transit";
-        RENDER_WINDOW.webContents.send("png", data);
-        RENDER_RUNNER_DONE[data.taskId] = done;
-      });
-    }
-  });
-
-  client.on("render-pdf", (data) => {
-    if (data) {
-      RENDER_RUNNER.add((done) => {
-        data.socketId = client.id;
-        data.taskId = uuidv7();
-        data.clientType = "transit";
-        RENDER_WINDOW.webContents.send("pdf", data);
-        RENDER_RUNNER_DONE[data.taskId] = done;
-      });
-    }
-  });
-
-  client.on("file.export", (data) => {
-    console.log(`中转服务 ${client.id}: file.export`);
-    handleFileExportTask(client, data);
-  });
+  bindPrintTaskHandler(client, "transit");
+  bindRenderTaskHandlers(client, "transit");
+  bindFileExportHandler(client, "中转服务");
 
   /**
    * @description: 中转服务 查询打印状态
    * @param {Object} data
    * @param {Array<String>} [data.templateIds] 模板id列表，为空时返回最近 20 条记录
    */
-  client.on("getPrintStatus", (data) => {
-    console.log(`中转服务 ${client.id}: getPrintStatus`);
-    queryPrintStatus(
-      data && Array.isArray(data.templateIds) ? data.templateIds : [],
-      (rows) => client.emit("printStatus", rows),
-      (err) => {
-        console.error(
-          `中转服务 ${client.id}: getPrintStatus error: ${err.message}`,
-        );
-        client.emit("printStatusError", { msg: err.message });
-      },
-    );
-  });
+  bindPrintStatusHandler(client, "中转服务");
 
   /**
    * @description: 中转服务 断开连接

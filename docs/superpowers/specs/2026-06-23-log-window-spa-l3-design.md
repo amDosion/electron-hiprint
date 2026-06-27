@@ -1,5 +1,7 @@
 # L3 重构：四个 UI 窗口合并为单页控制台（消除渲染进程冷启动）
 
+> 当前状态说明：本文件是 console SPA 迁移设计记录，文中的旧 `index/set/printLog/softwareLog` 文件路径用于描述迁移前来源和迁移步骤。当前运行时真源见 `docs/refactor/console-spa-parity.md`。
+
 - 日期: 2026-06-23
 - 状态: 设计已与用户对齐（方案 A，含主窗口全合并）
 - 关联调查: `.investigations/2026-06-23-log-window-domready-installed-vs-repo.md`

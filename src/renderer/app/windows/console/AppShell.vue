@@ -2,6 +2,8 @@
 import { onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Monitor, Operation, Share, Tools, Document, Tickets } from '@element-plus/icons-vue'
+// 中文 locale：入口不再 app.use(ElementPlus)，改在此顶层用 <el-config-provider> 注入。
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 
 const router = useRouter()
 const route = useRoute()
@@ -20,6 +22,7 @@ onMounted(() => {
 </script>
 
 <template>
+  <el-config-provider :locale="zhCn">
   <div class="shell">
     <nav class="shell-side">
       <div class="shell-brand"><span class="shell-logo"></span>hiPrint</div>
@@ -34,6 +37,7 @@ onMounted(() => {
     </nav>
     <main class="shell-main"><router-view /></main>
   </div>
+  </el-config-provider>
 </template>
 
 <style>

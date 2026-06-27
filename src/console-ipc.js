@@ -387,9 +387,6 @@ function registerConsoleIpc() {
   ipcMain.removeAllListeners("setConfig");
   ipcMain.on("setConfig", setConfig);
 
-  // setContentSize 不再需要（统一窗口不按内容调整尺寸），移除残留监听即可
-  ipcMain.removeAllListeners("setContentSize");
-
   ipcMain.removeAllListeners("showOpenDialog");
   ipcMain.on("showOpenDialog", showOpenDialog);
 

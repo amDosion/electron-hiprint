@@ -35,8 +35,10 @@ function result(id, severity, observed, evidence) {
 const packageJsonText = readText("package.json");
 const packageJson = JSON.parse(packageJsonText);
 const mainJs = readText("main.js");
+const appWindowJs = readText("src/app-window.js");
+const consoleIpcJs = readText("src/console-ipc.js");
+const onlineUpdateJs = readText("src/online-update.js");
 const utilsJs = readText("tools/utils.js");
-const setJs = readText("src/set.js");
 const printHtml = readText("assets/print.html");
 const renderHtml = readText("assets/render.html");
 const gitignore = readText(".gitignore");
@@ -96,15 +98,25 @@ const checks = [
     "SEC-NODE-ENABLED-RENDERERS",
     "critical",
     countMatches(
-      [mainJs, setJs, readText("src/print.js"), readText("src/render.js"), readText("src/printLog.js")].join("\n"),
+      [
+        mainJs,
+        appWindowJs,
+        readText("src/print.js"),
+        readText("src/render.js"),
+      ].join("\n"),
       /nodeIntegration:\s*true/g,
     ) > 0 &&
       countMatches(
-        [mainJs, setJs, readText("src/print.js"), readText("src/render.js"), readText("src/printLog.js")].join("\n"),
+        [
+          mainJs,
+          appWindowJs,
+          readText("src/print.js"),
+          readText("src/render.js"),
+        ].join("\n"),
         /contextIsolation:\s*false/g,
       ) > 0,
     {
-      files: ["main.js", "src/set.js", "src/print.js", "src/render.js", "src/printLog.js"],
+      files: ["main.js", "src/app-window.js", "src/print.js", "src/render.js"],
       detail: "Renderer windows enable Node and disable context isolation.",
     },
   ),
@@ -141,13 +153,13 @@ const checks = [
   result(
     "SEC-PLUGIN-DOWNLOAD-NO-INTEGRITY",
     "high",
-    /https\.get\(/.test(setJs) &&
-      !/sha256|integrity|signature/i.test(setJs) &&
-      !/fileStream\.on\(\s*"finish"/.test(setJs),
+    /https\.get\(/.test(onlineUpdateJs) &&
+      !/sha256|integrity|signature/i.test(onlineUpdateJs) &&
+      !/fileStream\.on\(\s*"finish"/.test(onlineUpdateJs),
     {
-      file: "src/set.js",
-      line: firstLine(setJs, /https\.get\(/),
-      detail: "Plugin download has no integrity check and does not wait for fileStream finish.",
+      file: "src/online-update.js",
+      line: firstLine(onlineUpdateJs, /https\.get\(/),
+      detail: "Online updater download has no integrity check and does not wait for fileStream finish.",
     },
   ),
   result(

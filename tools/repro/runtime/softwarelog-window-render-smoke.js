@@ -1,7 +1,7 @@
 "use strict";
 
-// 软件日志窗口 SFC 渲染冒烟（需真实 Electron）。
-// 经 app:// 加载已构建的 assets/softwareLog.html，附真实 src/preload/softwareLog.js（暴露 hiprintSoftwareLog 桥）。
+// 软件日志 route 渲染冒烟（需真实 Electron）。
+// 经 app:// 加载已构建的 assets/console.html#/software-log，附真实 src/preload/console.js（暴露 hiprintSoftwareLog 桥）。
 // 断言：加载成功、origin 为 app://bundle、桥注入、Vue 根挂载、顶栏品牌/日期选择/级别选择/搜索框、
 //       console 渲染出日志行与级别标签、刷新/打开数据库目录/清空 三个图标按钮、sqlite 页脚来源、
 //       长异常日志不会撑出横向滚动条、底栏可见、无脚本错误。
@@ -16,6 +16,27 @@ const electron = require("electron");
 const { app, BrowserWindow, ipcMain } = electron;
 
 app.getAppPath = () => REPO_ROOT;
+
+// console preload 在加载时会同步读取标题、版本和设置快照；测试主进程必须应答。
+ipcMain.on("hiprint:store-get", (event, key) => {
+  if (key === "mainTitle") event.returnValue = "Electron-hiprint";
+  else if (key === "rePrint") event.returnValue = 1;
+  else event.returnValue = undefined;
+});
+ipcMain.on("hiprint:app-version", (event) => {
+  event.returnValue = "0.0.0-repro";
+});
+ipcMain.on("hiprint:settings-snapshot", (event) => {
+  event.returnValue = {
+    port: 17521,
+    token: "",
+    nickName: "",
+    closeType: "tray",
+    pdfPath: "C:/ProgramData/hiprint/pdf",
+    defaultPrinter: "",
+    exportDirectory: { enabled: false },
+  };
+});
 
 // 软件日志桥经 invoke 取数据：列出日期 + 读取某日日志。给出可断言的真实负载。
 ipcMain.handle("software-log:list-dates", () => ["2026-06-10", "2026-06-09"]);
@@ -68,7 +89,7 @@ app.whenReady().then(async () => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      preload: path.join(REPO_ROOT, "src/preload/softwareLog.js"),
+      preload: path.join(REPO_ROOT, "src/preload/console.js"),
     },
   });
 
@@ -83,14 +104,15 @@ app.whenReady().then(async () => {
   });
 
   try {
-    await win.loadURL("app://bundle/softwareLog.html");
-    result.steps.push({ step: "loaded-softwarelog-html", ok: true });
+    await win.loadURL("app://bundle/console.html#/software-log");
+    result.steps.push({ step: "loaded-softwarelog-route", ok: true });
     // 等待 onMounted 的 invoke（list-dates → read）解析 + nextTick 渲染
     await new Promise((r) => setTimeout(r, 800));
 
     const probe = await win.webContents.executeJavaScript(`(async () => {
       const out = {};
       out.origin = location.origin;
+      out.hash = location.hash;
       out.hasBridge = typeof window.hiprintSoftwareLog === 'object' && window.hiprintSoftwareLog !== null;
       const appEl = document.querySelector('#app');
       out.appChildCount = appEl ? appEl.children.length : -1;
@@ -129,6 +151,10 @@ app.whenReady().then(async () => {
     if (probe.origin !== "app://bundle") {
       result.failed = true;
       result.steps.push({ step: "origin-mismatch", got: probe.origin });
+    }
+    if (probe.hash !== "#/software-log") {
+      result.failed = true;
+      result.steps.push({ step: "route-mismatch", got: probe.hash });
     }
     if (!probe.hasBridge) {
       result.failed = true;

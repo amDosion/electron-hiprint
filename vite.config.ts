@@ -28,9 +28,9 @@ const WINDOW_ENTRIES: Record<string, string> = {
 };
 
 // 构建时 tools/build-renderer.js 逐窗口设置 VITE_WINDOW，每个窗口单独构建。
-// 这样做不是因为 singlefile（已移除），而是为了窗口隔离：set 窗口故意全量
-// `import ElementPlus`，若改为单次 MPA 合并构建，公共 vendor chunk 会把全量 EP
-// 一并拖进打印记录/软件日志窗口，按需树摇白做。逐窗口构建保证日志窗口只含自身用到的组件。
+// 这样做不是因为 singlefile（已移除），而是为了窗口隔离：console 与 render 的依赖体积差异很大；
+// 若改为单次 MPA 合并构建，公共 vendor chunk 可能把控制台依赖拖进打印渲染窗口，按需树摇白做。
+// 逐窗口构建保证 render 入口不被控制台视图依赖污染。
 // 未设置 VITE_WINDOW（如 dev server）时返回全部窗口。
 function pickInput(): Record<string, string> {
   const target = process.env.VITE_WINDOW;

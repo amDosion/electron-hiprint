@@ -1,7 +1,7 @@
 "use strict";
 
 // 软件日志的 sqlite 存储层：被 main.js（electron-log transport 写入）与
-// src/softwareLog.js（窗口读取/打开数据库目录）共用，使软件日志与打印日志统一落到 sqlite。
+// src/console-ipc.js（console SPA 读取/打开数据库目录）共用，使软件日志与打印日志统一落到 sqlite。
 //
 // 关键约束：写入路径运行在「console 已被 electron-log 接管」的环境下
 //（main.js: Object.assign(console, electronLog.functions)），因此写入侧的
